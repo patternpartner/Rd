@@ -2,587 +2,969 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Adaptive RD v6 — Mobile</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adaptive RD v6 — Observatory</title>
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:#000; overflow:hidden; width:100vw; height:100vh; touch-action:none; }
-canvas#c { display:block; image-rendering:pixelated; image-rendering:crisp-edges; }
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;overflow:hidden;width:100vw;height:100vh;}
+canvas#c{display:block;cursor:crosshair;}
 
-#ui {
-  position:fixed; top:8px; left:8px; z-index:10;
-  display:flex; flex-direction:column; gap:3px;
-  max-width:140px;
+/* ── INSTRUMENT PANEL ── */
+#instruments{
+  position:fixed;bottom:0;left:0;right:0;height:0;
+  background:rgba(0,0,0,0.92);
+  border-top:1px solid rgba(255,255,255,0.06);
+  transition:height 0.3s ease;
+  z-index:20;overflow:hidden;
+  display:flex;gap:0;
 }
-.sec { font:6px 'Courier New',monospace; color:rgba(255,255,255,0.18);
-  letter-spacing:0.2em; text-transform:uppercase; margin-top:5px; }
-.b { background:rgba(0,0,0,0.75); border:1px solid rgba(255,255,255,0.1);
-  color:rgba(255,255,255,0.35); font:7px 'Courier New',monospace;
-  padding:3px 6px; cursor:pointer; text-align:left; white-space:nowrap;
-  -webkit-tap-highlight-color:transparent; }
-.b.on { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.9);
-  border-color:rgba(255,255,255,0.3); }
-.b.hot { border-color:rgba(255,80,30,0.3); color:rgba(255,110,50,0.5); }
+#instruments.open{height:160px;}
+#instruments canvas{flex:1;min-width:0;height:100%;}
 
-#hud { position:fixed; top:8px; right:8px;
-  font:7px 'Courier New',monospace; color:rgba(255,255,255,0.18);
-  letter-spacing:0.07em; text-align:right; line-height:2; pointer-events:none; }
-
-#obs {
-  position:fixed; bottom:0; left:0; right:0; height:90px;
-  background:rgba(0,0,0,0.9); border-top:1px solid rgba(255,255,255,0.06);
-  display:flex;
+#inst-toggle{
+  position:fixed;bottom:0;z-index:21;
+  left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,0.85);
+  border:1px solid rgba(255,255,255,0.08);
+  border-bottom:none;border-radius:4px 4px 0 0;
+  color:rgba(255,255,255,0.3);
+  font:7px 'Courier New',monospace;letter-spacing:0.15em;
+  padding:2px 14px 3px;cursor:pointer;
+  transition:all 0.2s;
 }
-#obs canvas { flex:1; min-width:0; }
+#inst-toggle:hover{color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.2);}
+#inst-toggle.open{bottom:160px;}
 
-#obs-toggle {
-  position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
-  background:rgba(0,0,0,0.8); border:1px solid rgba(255,255,255,0.08);
-  border-bottom:none; color:rgba(255,255,255,0.3);
-  font:6px 'Courier New',monospace; letter-spacing:0.12em;
-  padding:2px 10px; cursor:pointer; -webkit-tap-highlight-color:transparent;
+/* ── CONTROLS ── */
+#ui{
+  position:fixed;top:10px;left:10px;z-index:10;
+  display:flex;flex-direction:column;gap:3px;
+  max-width:175px;user-select:none;-webkit-user-select:none;
 }
+.sec{font:6.5px 'Courier New',monospace;color:rgba(255,255,255,0.14);
+  letter-spacing:0.2em;text-transform:uppercase;margin-top:5px;padding-left:2px;}
+.b{background:rgba(0,0,0,0.72);border:1px solid rgba(255,255,255,0.06);
+  color:rgba(255,255,255,0.30);font:7px 'Courier New',monospace;
+  letter-spacing:0.08em;padding:2px 6px;cursor:pointer;
+  transition:all 0.15s;text-align:left;white-space:nowrap;}
+.b:hover{background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.18);}
+.b.on{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.82);border-color:rgba(255,255,255,0.25);}
+.b.hot{border-color:rgba(255,90,40,0.18);color:rgba(255,120,60,0.4);}
+.b.hot:hover{border-color:rgba(255,90,40,0.4);color:rgba(255,150,90,0.85);}
+.b.cool{border-color:rgba(80,140,255,0.15);color:rgba(100,160,255,0.38);}
+.b.cool:hover{border-color:rgba(80,140,255,0.35);color:rgba(120,180,255,0.8);}
 
-#help { position:fixed; bottom:96px; left:8px;
-  font:6px 'Courier New',monospace; color:rgba(255,255,255,0.1);
-  line-height:1.7; pointer-events:none; }
+.sr{display:flex;align-items:center;gap:3px;padding:0 2px;}
+.sr label{font:6px 'Courier New',monospace;color:rgba(255,255,255,0.18);
+  letter-spacing:0.05em;min-width:56px;}
+.sr input[type=range]{flex:1;height:1px;-webkit-appearance:none;
+  background:rgba(255,255,255,0.06);outline:none;}
+.sr input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:5px;height:5px;border-radius:50%;
+  background:rgba(255,255,255,0.25);cursor:pointer;}
+.sr .v{font:6px 'Courier New',monospace;color:rgba(255,255,255,0.15);
+  min-width:22px;text-align:right;}
+
+#hud{position:fixed;top:10px;right:10px;
+  font:7px 'Courier New',monospace;color:rgba(255,255,255,0.14);
+  letter-spacing:0.08em;text-align:right;line-height:2;pointer-events:none;}
+#log{position:fixed;bottom:170px;right:10px;
+  font:6px 'Courier New',monospace;color:rgba(255,80,40,0.28);
+  letter-spacing:0.05em;text-align:right;line-height:1.6;
+  pointer-events:none;max-width:200px;transition:bottom 0.3s;}
+#log.closed{bottom:18px;}
+#help{position:fixed;bottom:170px;left:10px;
+  font:6px 'Courier New',monospace;color:rgba(255,255,255,0.08);
+  letter-spacing:0.05em;line-height:1.7;pointer-events:none;transition:bottom 0.3s;}
+#help.closed{bottom:18px;}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 
-<div id="ui">
-  <div class="sec">view</div>
-  <button class="b on" id="v-chem">chemistry</button>
-  <button class="b" id="v-age">stratigraphy</button>
-  <button class="b" id="v-stress">seismic stress</button>
-  <button class="b" id="v-tension">tension</button>
-  <button class="b" id="v-terr">territory</button>
-
-  <div class="sec">events</div>
-  <button class="b hot" id="btn-quake">ancient quake</button>
-  <button class="b" id="btn-freeze">freeze memory</button>
-
-  <div class="sec"></div>
-  <button class="b" id="btn-reset">reset all</button>
-  <button class="b" id="btn-reseed">reseed</button>
-</div>
-
-<div id="hud">
-  adaptive rd v6 · mobile<br>
-  <span id="gen-l">gen 0</span><br>
-  <span id="q-a" style="color:rgba(255,80,30,0.5)">ancient: 0</span>
-</div>
-
-<button id="obs-toggle">▾ observatory</button>
-<div id="obs">
+<!-- Instrument panel -->
+<button id="inst-toggle" class="open">▾ observatory</button>
+<div id="instruments" class="open">
   <canvas id="seismo"></canvas>
   <canvas id="agehist"></canvas>
   <canvas id="stresshist"></canvas>
   <canvas id="timeline"></canvas>
 </div>
 
-<div id="help">drag: seed V / shift+drag: seed U / doubletap: quake</div>
+<div id="ui">
+  <div class="sec">view</div>
+  <button class="b on" id="v-chem">chemistry</button>
+  <button class="b" id="v-mem">geological memory</button>
+  <button class="b" id="v-age">stratigraphy</button>
+  <button class="b" id="v-stress">seismic stress</button>
+  <button class="b" id="v-tension">boundary tension</button>
+  <button class="b" id="v-terr">territory</button>
+  <button class="b" id="v-erosion">erosion</button>
+
+  <div class="sec">geology</div>
+  <div class="sr"><label>adapt</label><input type="range" id="s-adapt" min="0" max="100" value="28"><span class="v" id="d-adapt">.28</span></div>
+  <div class="sr"><label>mem diff</label><input type="range" id="s-memd" min="0" max="100" value="14"><span class="v" id="d-memd">.14</span></div>
+  <div class="sr"><label>exclusion</label><input type="range" id="s-excl" min="0" max="100" value="42"><span class="v" id="d-excl">.42</span></div>
+  <div class="sr"><label>erosion</label><input type="range" id="s-eros" min="0" max="100" value="25"><span class="v" id="d-eros">.25</span></div>
+
+  <div class="sec">boundary fault</div>
+  <div class="sr"><label>rupt thr</label><input type="range" id="s-rupt" min="5" max="100" value="58"><span class="v" id="d-rupt">.58</span></div>
+  <div class="sr"><label>slip damp</label><input type="range" id="s-damp" min="0" max="100" value="60"><span class="v" id="d-damp">.60</span></div>
+  <div class="sr"><label>refractory</label><input type="range" id="s-refr" min="0" max="100" value="50"><span class="v" id="d-refr">.50</span></div>
+
+  <div class="sec">ancient fault</div>
+  <div class="sr"><label>stress rt</label><input type="range" id="s-srate" min="0" max="100" value="35"><span class="v" id="d-srate">.35</span></div>
+  <div class="sr"><label>stress df</label><input type="range" id="s-sdiff" min="0" max="100" value="20"><span class="v" id="d-sdiff">.20</span></div>
+  <div class="sr"><label>brittle</label><input type="range" id="s-brit" min="5" max="100" value="60"><span class="v" id="d-brit">.60</span></div>
+
+  <div class="sec">events</div>
+  <button class="b hot" id="btn-quake">ancient quake</button>
+  <button class="b" id="btn-freeze">freeze memory</button>
+  <button class="b cool" id="btn-save">save geology</button>
+  <button class="b cool" id="btn-transplant">transplant + reseed</button>
+  <div class="sec"></div>
+  <button class="b" id="btn-reset">reset all</button>
+  <button class="b" id="btn-reseed">reseed chemistry</button>
+</div>
+
+<div id="hud">
+  adaptive rd v6 — observatory<br>
+  <span id="gen-l">gen 0</span><br>
+  <span id="q-ancient" style="color:rgba(255,90,40,0.35)">ancient: 0</span>
+  <span id="q-boundary" style="color:rgba(255,200,80,0.25)">· boundary: 0</span><br>
+  <span id="geo-status" style="color:rgba(100,160,255,0.25)">geology: none saved</span>
+</div>
+<div id="log" class=""></div>
+<div id="help" class="">
+  drag: V / shift+drag: U / dblclick: quake<br>
+  ▾ observatory: seismograph · age · stress · timeline
+</div>
 
 <script>
-// ═══════════════════════════════════════════════════════
-// ADAPTIVE RD v6 — CPU VERSION FOR MOBILE
+// ════════════════════════════════════════════════════════════════
+// ADAPTIVE RD v6 — OBSERVATORY
 //
-// Full v5 mechanism set running on CPU:
-//   - Per-site Du/Dv drift from chemical history
-//   - Memory diffusion + competitive exclusion
-//   - Adaptive F/K from geological depth
-//   - Boundary fault: damped slip + refractory cooldown
-//   - Ancient fault: seismic stress + brittle rupture
-//   - Observatory: seismograph, age hist, stress hist, timeline
+// Complete v5 system (v1→v5 lineage intact) plus:
 //
-// Grid: adaptive to screen size, ~120x80 cells
-// Each cell stores: U, V, Du, Dv, tension, cooldown,
-//                   U_avg, V_avg, age, stress
-// ═══════════════════════════════════════════════════════
+// RESTORED: Transplant system (save/load geology independently)
+//
+// NEW: Observatory — real-time instruments reading the simulation
+//   1. SEISMOGRAPH: rolling trace of total boundary tension +
+//      seismic stress. Boundary events = orange spikes.
+//      Ancient events = deep red spikes. Shows the pulse.
+//   2. AGE HISTOGRAM: distribution of geological ages across
+//      the field. Tall young peak = fresh system. Spread =
+//      mature geology. Gaps = where ancient quakes wiped strata.
+//   3. STRESS HISTOGRAM: distribution of seismic stress.
+//      Pile-up near brittle threshold = imminent ancient quake.
+//   4. TIMELINE: event markers over geological time.
+//      Each detected rupture event logged as a mark.
+//      Density shows punctuated equilibrium pattern.
+//
+// Instruments read GPU state every N frames via readPixels on a
+// downsampled grid (not every pixel — that would stall the GPU).
+// ════════════════════════════════════════════════════════════════
 
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-let W, H, GW, GH, tick = 0, frozen = false, view = 'chem';
-let qAncient = 0;
-const CELL = 5; // pixels per cell
+const mainCanvas = document.getElementById('c');
+const gl = mainCanvas.getContext('webgl',{antialias:false,preserveDrawingBuffer:false});
+if(!gl){document.body.innerHTML='<p style="color:#fff;padding:2rem">WebGL required</p>';throw 0;}
+gl.getExtension('OES_texture_float');
+gl.getExtension('OES_texture_float_linear');
+gl.getExtension('OES_texture_half_float');
 
-// Simulation arrays (flat, row-major)
-let U, V, Du, Dv, tension, cooldown, Uavg, Vavg, age, stress;
-let imgData, pixels;
+let W,H,tick=0,frozen=false,view='chem';
+let qAncient=0,qBoundary=0;
+let saved=null;
 
-// Parameters
-const F0 = 0.0545, K0 = 0.062;
-const DU_LO = 0.05, DU_HI = 0.35, DV_LO = 0.025, DV_HI = 0.175;
-const DU_DEF = 0.2097, DV_DEF = 0.105;
-const ALPHA = 0.003;
-let pAdapt = 0.0011, pMemD = 0.0014, pExcl = 0.42, pEros = 0.0075;
-let pRupt = 0.58, pDamp = 0.60, pRefr = 0.50;
-let pStressRate = 0.000012, pStressDiff = 0.002, pBrittle = 0.60;
+// ── Instrument canvases ──
+const seismoCanvas=document.getElementById('seismo');
+const ageCanvas=document.getElementById('agehist');
+const stressCanvas=document.getElementById('stresshist');
+const timeCanvas=document.getElementById('timeline');
+const seismoCtx=seismoCanvas.getContext('2d');
+const ageCtx=ageCanvas.getContext('2d');
+const stressCtx=stressCanvas.getContext('2d');
+const timeCtx=timeCanvas.getContext('2d');
 
-// Observatory
-const SEISMO_LEN = 200;
-const seismoT = new Float32Array(SEISMO_LEN);
-const seismoS = new Float32Array(SEISMO_LEN);
-let seismoIdx = 0;
-const AGE_BINS = 32, STRESS_BINS = 32;
-let ageDist = new Float32Array(AGE_BINS);
-let stressDist = new Float32Array(STRESS_BINS);
-let eventLog = [];
-let prevTension = 0, prevStress = 0;
-let obsOpen = true;
+// Instrument data buffers
+const SEISMO_LEN=300;
+const seismoData={tension:new Float32Array(SEISMO_LEN),stress:new Float32Array(SEISMO_LEN),idx:0};
+const AGE_BINS=40, STRESS_BINS=40;
+let ageDist=new Float32Array(AGE_BINS);
+let stressDist=new Float32Array(STRESS_BINS);
+const MAX_EVENTS=500;
+let eventLog=[];// {tick, type:'boundary'|'ancient', magnitude}
+let instOpen=true;
 
-function idx(x, y) { return y * GW + x; }
+// Base params
+const F0=0.0545,K0=0.062;
+const DU_LO=0.05,DU_HI=0.35,DV_LO=0.025,DV_HI=0.175;
+const DU_DEF=0.2097,DV_DEF=0.105;
+const HIST_A=0.003;
 
-function initArrays() {
-  const n = GW * GH;
-  U = new Float32Array(n); V = new Float32Array(n);
-  Du = new Float32Array(n); Dv = new Float32Array(n);
-  tension = new Float32Array(n); cooldown = new Float32Array(n);
-  Uavg = new Float32Array(n); Vavg = new Float32Array(n);
-  age = new Float32Array(n); stress = new Float32Array(n);
-  // Defaults
-  U.fill(1.0);
-  for (let i = 0; i < n; i++) { Du[i] = DU_DEF; Dv[i] = DV_DEF; Uavg[i] = 1.0; }
-  imgData = ctx.createImageData(GW, GH);
-  pixels = imgData.data;
-}
+let pAdapt=0.0011,pMemD=0.0014,pExcl=0.42,pEros=0.00075;
+let pRupt=0.58,pDamp=0.60,pRefr=0.50;
+let pStressRate=0.000012,pStressDiff=0.0020,pBrittle=0.60,pQuakeRad=0.40;
 
-function seed() {
-  const n = GW * GH;
-  U.fill(1.0); V.fill(0.0);
-  const ns = Math.floor(n * 0.003);
-  for (let s = 0; s < ns; s++) {
-    const cx = 2 + Math.floor(Math.random() * (GW - 4));
-    const cy = 2 + Math.floor(Math.random() * (GH - 4));
-    const r = 1 + Math.floor(Math.random() * 3);
-    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
-      if (dx*dx+dy*dy > r*r) continue;
-      const x = (cx+dx+GW)%GW, y = (cy+dy+GH)%GH;
-      const i = idx(x,y);
-      U[i] = 0.5; V[i] = 0.9;
-    }
+// ═══════════════ SHADERS ═══════════════
+// All shaders from v5, unchanged except noted
+
+const VS=`attribute vec2 a;varying vec2 uv;
+void main(){uv=a*.5+.5;gl_Position=vec4(a,0,1);}`;
+
+const SH_RD=`
+precision highp float;
+uniform sampler2D tC,tD,tH;
+uniform vec2 res;
+uniform float F,K,dt,DuL,DuH,DvL,DvH;
+varying vec2 uv;
+void main(){
+  vec2 p=1./res;
+  vec2 c=texture2D(tC,uv).rg;
+  vec2 n=texture2D(tC,uv+vec2(0,p.y)).rg;
+  vec2 s=texture2D(tC,uv-vec2(0,p.y)).rg;
+  vec2 e=texture2D(tC,uv+vec2(p.x,0)).rg;
+  vec2 w=texture2D(tC,uv-vec2(p.x,0)).rg;
+  vec2 ne=texture2D(tC,uv+p).rg;
+  vec2 nw=texture2D(tC,uv+vec2(-p.x,p.y)).rg;
+  vec2 se=texture2D(tC,uv+vec2(p.x,-p.y)).rg;
+  vec2 sw=texture2D(tC,uv-p).rg;
+  vec2 lap=.05*(ne+nw+se+sw)+.2*(n+s+e+w)-c;
+  vec2 Dn=texture2D(tD,uv).rg;
+  float Du=mix(DuL,DuH,Dn.r),Dv=mix(DvL,DvH,Dn.g);
+  vec4 h=texture2D(tH,uv);
+  float Ua=h.r,Va=h.g,age=h.b;
+  float drift=abs(c.r-Ua)+abs(c.g-Va);
+  float stab=1.-clamp(drift*6.,0.,1.);
+  float vC=clamp((Va-.3)*2.,0.,1.);
+  float uC=clamp((Ua-.5)*2.,0.,1.);
+  float fkw=1.-age*0.5;
+  float lF=clamp(F+.006*(uC*.6-vC*.8)*stab*fkw,.02,.08);
+  float lK=clamp(K+.004*(drift*3.-stab*.3)*fkw,.045,.075);
+  float U=c.r,V=c.g,UVV=U*V*V;
+  gl_FragColor=vec4(
+    clamp(U+(Du*lap.r-UVV+lF*(1.-U))*dt,0.,1.),
+    clamp(V+(Dv*lap.g+UVV-(lF+lK)*V)*dt,0.,1.),0.,1.);
+}`;
+
+const SH_HIST=`
+precision highp float;
+uniform sampler2D tC,tH;
+uniform vec2 res;
+uniform float alpha,freeze,erosStr,stressRate,stressDiff;
+varying vec2 uv;
+void main(){
+  vec2 p=1./res;
+  vec2 ch=texture2D(tC,uv).rg;
+  vec4 h=texture2D(tH,uv);
+  float act=1.-freeze;
+  float U=ch.r,V=ch.g,UVV=U*V*V;
+  float age=h.b,stress=h.a;
+  float drift=abs(ch.r-h.r)+abs(ch.g-h.g);
+  float age_res=1.-age*0.7;
+  float erosion=UVV*erosStr*act*age_res;
+  float nUa=mix(mix(h.r,ch.r,alpha*act),0.5,erosion);
+  float nVa=mix(mix(h.g,ch.g,alpha*act),0.0,erosion*0.6);
+  float stability=clamp(1.-drift*8.,0.,1.);
+  float new_age=mix(age+0.00004*stability*act,age*0.97,clamp(drift*12.,0.,1.));
+  new_age=mix(new_age,0.,erosion*0.5);
+  new_age=clamp(new_age,0.,1.);
+  float v_commit=clamp((h.g-0.1)*2.,0.,1.);
+  float u_commit=clamp((h.r-0.4)*2.,0.,1.);
+  float commitment=max(v_commit,u_commit);
+  float lock=age*stability*commitment;
+  float stress_build=lock*stressRate*act;
+  float sN=texture2D(tH,uv+vec2(0,p.y)).a;
+  float sS=texture2D(tH,uv-vec2(0,p.y)).a;
+  float sE=texture2D(tH,uv+vec2(p.x,0)).a;
+  float sW=texture2D(tH,uv-vec2(p.x,0)).a;
+  float aN=texture2D(tH,uv+vec2(0,p.y)).b;
+  float aS=texture2D(tH,uv-vec2(0,p.y)).b;
+  float aE=texture2D(tH,uv+vec2(p.x,0)).b;
+  float aW=texture2D(tH,uv-vec2(p.x,0)).b;
+  float wN=.2+aN*.8,wS=.2+aS*.8,wE=.2+aE*.8,wW=.2+aW*.8;
+  float wSum=wN+wS+wE+wW;
+  float nbr_s=(sN*wN+sS*wS+sE*wE+sW*wW)/wSum;
+  float s_diff=(nbr_s-stress)*stressDiff*act;
+  float new_stress=clamp(stress+stress_build+s_diff,0.,1.);
+  new_stress*=1.-0.0001*act;
+  gl_FragColor=vec4(nUa,nVa,new_age,new_stress);
+}`;
+
+const SH_DIFF=`
+precision highp float;
+uniform sampler2D tD,tH;
+uniform vec2 res;
+uniform float rate,freeze,memD,excl;
+uniform float ruptThr,damp,refrStr;
+uniform float brittleThr;
+varying vec2 uv;
+float rand(vec2 co){return fract(sin(dot(co,vec2(12.9898,78.233)))*43758.5453);}
+void main(){
+  vec2 p=1./res;
+  vec4 d=texture2D(tD,uv);
+  vec4 h=texture2D(tH,uv);
+  float act=1.-freeze;
+  float age=h.b,stress=h.a;
+  vec2 Dn=texture2D(tD,uv+vec2(0,p.y)).rg;
+  vec2 Ds=texture2D(tD,uv-vec2(0,p.y)).rg;
+  vec2 De=texture2D(tD,uv+vec2(p.x,0)).rg;
+  vec2 Dw=texture2D(tD,uv-vec2(p.x,0)).rg;
+  float aN=texture2D(tH,uv+vec2(0,p.y)).b;
+  float aS=texture2D(tH,uv-vec2(0,p.y)).b;
+  float aE=texture2D(tH,uv+vec2(p.x,0)).b;
+  float aW=texture2D(tH,uv-vec2(p.x,0)).b;
+  float wN=.25+aN*.75,wS=.25+aS*.75,wE=.25+aE*.75,wW=.25+aW*.75;
+  float wSum=wN+wS+wE+wW;
+  vec2 Dwa=(Dn*wN+Ds*wS+De*wE+Dw*wW)/wSum;
+  vec2 Dd=d.rg+(Dwa-d.rg)*memD*act;
+  float vSig=clamp(h.g*1.5,0.,1.),uSig=clamp(h.r*1.2,0.,1.);
+  float tDv=mix(.3,.95,vSig),tDu=mix(.7,.15,vSig*excl);
+  tDu=mix(tDu,mix(tDu,.9,uSig),.5);
+  tDv=mix(tDv,mix(tDv,.1,uSig*excl),.5);
+  float rdrift=abs(Dd.r-tDu)+abs(Dd.g-tDv);
+  float df=clamp(rdrift*3.,0.,1.);
+  tDu=mix(tDu,.5,df*.4);tDv=mix(tDv,.5,df*.4);
+  float r=rate*act;
+  float nDu=mix(Dd.r,tDu,r);
+  float nDv=mix(Dd.g,tDv,r);
+  float contested=(1.-abs(nDu-nDv))*(1.-abs(nDu+nDv-1.))*clamp(rdrift*4.,.15,1.);
+  float tn=texture2D(tD,uv+vec2(0,p.y)).b;
+  float ts=texture2D(tD,uv-vec2(0,p.y)).b;
+  float te=texture2D(tD,uv+vec2(p.x,0)).b;
+  float tw=texture2D(tD,uv-vec2(p.x,0)).b;
+  float age_lock=1.-age*0.65;
+  float cd_sup=1.-d.a;
+  float bnd_t=mix(mix(d.b,contested*age_lock*cd_sup,.1),d.b+(tn+ts+te+tw)*.0375*age_lock*cd_sup,.35);
+  bnd_t=clamp(bnd_t,0.,1.);
+  float cooldown=d.a;
+  float bnd_rupt=step(ruptThr,bnd_t)*act;
+  if(bnd_rupt>.5){
+    float over=clamp((bnd_t-ruptThr)/(1.-ruptThr),0.,1.);
+    float slip=mix(.15,.55,over)*damp;
+    nDu=mix(nDu,.5,slip);nDv=mix(nDv,.5,slip);
+    bnd_t*=(1.-slip*.8);
+    cooldown=clamp(cooldown+refrStr*over,0.,1.);
   }
-  tick = 0;
-}
+  cooldown=max(0.,cooldown-.003*act);
+  float brittleness=age*0.45;
+  float eff_thr=brittleThr*(1.-brittleness);
+  float anc_rupt=step(eff_thr,stress)*age*act;
+  anc_rupt*=step(0.4,age);
+  if(anc_rupt>.5){
+    float nu=rand(uv+vec2(float(int(stress*100.)),0.));
+    float nv=rand(uv+vec2(0.,float(int(stress*100.))));
+    float scatter=clamp((stress-eff_thr)/(1.-eff_thr),0.,1.);
+    float ss=mix(0.3,0.9,scatter);
+    nDu=mix(nDu,mix(.45,.55,nu),ss);
+    nDv=mix(nDv,mix(.45,.55,nv),ss);
+    bnd_t=mix(bnd_t,.9,ss*.7);
+    cooldown=clamp(cooldown+ss*.8,0.,1.);
+  }
+  gl_FragColor=vec4(clamp(nDu,0.,1.),clamp(nDv,0.,1.),clamp(bnd_t,0.,1.),clamp(cooldown,0.,1.));
+}`;
 
-function resetMemory() {
-  const n = GW * GH;
-  Du.fill(DU_DEF); Dv.fill(DV_DEF);
-  tension.fill(0); cooldown.fill(0);
-  Uavg.fill(1.0); Vavg.fill(0.0);
-  age.fill(0); stress.fill(0);
+const SH_DISP=`
+precision highp float;
+uniform sampler2D tC,tD,tH;
+uniform int mode;
+varying vec2 uv;
+vec3 pal4(float t,vec3 a,vec3 b,vec3 c,vec3 d){
+  if(t<.33)return mix(a,b,t/.33);
+  if(t<.66)return mix(b,c,(t-.33)/.33);
+  return mix(c,d,(t-.66)/.34);
 }
+void main(){
+  vec2 ch=texture2D(tC,uv).rg;
+  vec4 df=texture2D(tD,uv);
+  vec4 ht=texture2D(tH,uv);
+  vec3 col;
+  if(mode==0){
+    float t=clamp(1.-(ch.r-ch.g)*1.2,0.,1.);
+    col=pal4(t,vec3(.008,.012,.04),vec3(.04,.12,.30),vec3(.70,.82,.92),vec3(1.,.78,.32));
+    col=mix(col,vec3(1.,.35,.08),clamp(df.b*2.-.7,0.,1.)*.18);
+    float ss=clamp(ht.a*2.5-.5,0.,1.)*ht.b;
+    col=mix(col,vec3(.8,.05,.02),ss*.22);
+    col=mix(col,vec3(.3,.5,.9),df.a*.12);
+  }else if(mode==1){
+    float m=ht.g*.65+(1.-ht.r)*.35;
+    col=pal4(clamp(m,0.,1.),vec3(.02,.03,.08),vec3(.06,.18,.38),vec3(.55,.40,.15),vec3(.90,.75,.18));
+    float ct=clamp(1.-(ch.r-ch.g)*1.2,0.,1.);
+    col=mix(col,pal4(ct,vec3(.008,.012,.04),vec3(.04,.12,.30),vec3(.70,.82,.92),vec3(1.,.78,.32)),.09);
+  }else if(mode==2){
+    float a=ht.b;
+    vec3 young=vec3(.12,.82,.62),mid_=vec3(.62,.42,.10),old_=vec3(.28,.07,.03),anc=vec3(.07,.02,.01);
+    if(a<.25)col=mix(young,mid_,a/.25);
+    else if(a<.6)col=mix(mid_,old_,(a-.25)/.35);
+    else col=mix(old_,anc,(a-.6)/.4);
+    float ct=clamp(1.-(ch.r-ch.g)*1.2,0.,1.);
+    col=mix(col,vec3(ct*.4),.07);
+    col=mix(col,vec3(.85,.98,1.),df.a*.28);
+    col=mix(col,vec3(.9,.1,.05),clamp(ht.a*ht.b*3.,0.,1.)*.2);
+  }else if(mode==3){
+    float s=ht.a*ht.b;
+    col=pal4(clamp(s*2.,0.,1.),vec3(.02,.01,.04),vec3(.35,.02,.25),vec3(.90,.08,.02),vec3(1.,.95,.5));
+    col=mix(vec3(.01,.01,.02),col,clamp(ht.a*3.,0.,1.));
+    col=mix(col,vec3(1.,.9,.7),df.a*.5);
+  }else if(mode==4){
+    float t=clamp(df.b*1.5,0.,1.);
+    col=pal4(t,vec3(.01,.005,.02),vec3(.30,.02,.18),vec3(.85,.14,.04),vec3(1.,.90,.60));
+    col=mix(col,vec3(.05,.08,.25),df.a*.5);
+  }else if(mode==5){
+    float vD=clamp((df.g-df.r+.3)*2.,0.,1.);
+    float uD=clamp((df.r-df.g+.3)*2.,0.,1.);
+    float depth=1.-ht.b*.4;
+    col=mix(vec3(.03,.03,.04),vec3(.08,.15,.50)*depth,uD);
+    col=mix(col,vec3(.60,.18,.05)*depth,vD);
+    float cont=clamp(df.b*8.,0.,1.)*clamp(1.-abs(df.r-df.g)*4.,0.,1.);
+    col=mix(col,vec3(.95,.90,.85),cont*cont);
+  }else{
+    float UVV=ch.r*ch.g*ch.g;
+    float vuln=1.-ht.b*.7;
+    float activity=clamp(UVV*6.,0.,1.)*vuln;
+    col=pal4(clamp(activity,0.,1.),vec3(.01,.02,.04),vec3(.02,.15,.12),vec3(.15,.65,.45),vec3(.80,.95,.55));
+    col*=mix(1.,.5,ht.b);
+  }
+  gl_FragColor=vec4(col,1.);
+}`;
 
-function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight - (obsOpen ? 90 : 0);
-  GW = Math.floor(W / CELL);
-  GH = Math.floor(H / CELL);
-  initArrays();
+const SH_PAINT=`precision highp float;
+uniform sampler2D tC;uniform vec2 res,mouse;uniform float rad,pmode;varying vec2 uv;
+void main(){
+  vec2 px=uv*res;float d=length(px-mouse);vec2 s=texture2D(tC,uv).rg;
+  if(d<rad){float str=pow(1.-d/rad,2.);
+    if(pmode<.5){s.g=mix(s.g,.9,str*.85);s.r=mix(s.r,.4,str*.3);}
+    else{s.r=mix(s.r,1.,str*.9);s.g=mix(s.g,0.,str*.5);}
+  }gl_FragColor=vec4(s,0.,1.);}`;
+
+const SH_QUAKE=`precision highp float;
+uniform sampler2D tH;uniform vec2 res,center;uniform float rad;varying vec2 uv;
+void main(){
+  vec2 px=uv*res;float d=length(px-center);vec4 h=texture2D(tH,uv);
+  if(d<rad){float str=pow(1.-d/rad,1.5);
+    h.a=mix(h.a,1.0,str*0.9);h.b=mix(h.b,0.85,str*0.5);}
+  gl_FragColor=h;}`;
+
+// ═══════════════ COMPILE ═══════════════
+function mkS(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(s));return s;}
+function mkP(vs,fs){const p=gl.createProgram();gl.attachShader(p,mkS(gl.VERTEX_SHADER,vs));
+  gl.attachShader(p,mkS(gl.FRAGMENT_SHADER,fs));gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(p));return p;}
+
+const pRD=mkP(VS,SH_RD),pHist=mkP(VS,SH_HIST),pDiff=mkP(VS,SH_DIFF);
+const pDisp=mkP(VS,SH_DISP),pPaint=mkP(VS,SH_PAINT),pQuake=mkP(VS,SH_QUAKE);
+
+const qBuf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,qBuf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+function bQ(p){const l=gl.getAttribLocation(p,'a');gl.bindBuffer(gl.ARRAY_BUFFER,qBuf);
+  gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);}
+
+function mkTex(w,h,data){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,data||null);return t;}
+function mkFB(t){const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);return f;}
+
+let tC0,tC1,tD0,tD1,tH0,tH1,fC0,fC1,fD0,fD1,fH0,fH1;
+
+function initAll(){
+  W=Math.floor(window.innerWidth*.5);
+  H=Math.floor(window.innerHeight*.5);
+  mainCanvas.width=window.innerWidth;
+  mainCanvas.height=window.innerHeight-(instOpen?160:0);
+
+  const cd=new Uint8Array(W*H*4);
+  for(let i=0;i<W*H;i++){cd[i*4]=255;cd[i*4+3]=255;}
+  const duE=Math.round(((DU_DEF-DU_LO)/(DU_HI-DU_LO))*255);
+  const dvE=Math.round(((DV_DEF-DV_LO)/(DV_HI-DV_LO))*255);
+  const dd=new Uint8Array(W*H*4);
+  for(let i=0;i<W*H;i++){dd[i*4]=duE;dd[i*4+1]=dvE;dd[i*4+3]=255;}
+  const hd=new Uint8Array(W*H*4);
+  for(let i=0;i<W*H;i++){hd[i*4]=255;hd[i*4+3]=255;}
+
+  if(tC0)[tC0,tC1,tD0,tD1,tH0,tH1].forEach(t=>gl.deleteTexture(t));
+  tC0=mkTex(W,H,cd);fC0=mkFB(tC0);tC1=mkTex(W,H,null);fC1=mkFB(tC1);
+  tD0=mkTex(W,H,dd);fD0=mkFB(tD0);tD1=mkTex(W,H,null);fD1=mkFB(tD1);
+  tH0=mkTex(W,H,hd);fH0=mkFB(tH0);tH1=mkTex(W,H,null);fH1=mkFB(tH1);
+  resizeInstruments();
   seed();
-  resizeObs();
 }
 
-// ── SIMULATION STEP ──
-function step() {
-  const newU = new Float32Array(GW * GH);
-  const newV = new Float32Array(GW * GH);
-  const newDu = new Float32Array(GW * GH);
-  const newDv = new Float32Array(GW * GH);
-  const newTension = new Float32Array(GW * GH);
-  const newCooldown = new Float32Array(GW * GH);
-  const newUavg = new Float32Array(GW * GH);
-  const newVavg = new Float32Array(GW * GH);
-  const newAge = new Float32Array(GW * GH);
-  const newStress = new Float32Array(GW * GH);
+function resizeInstruments(){
+  const w=Math.floor(window.innerWidth/4);
+  [seismoCanvas,ageCanvas,stressCanvas,timeCanvas].forEach(c=>{c.width=w;c.height=158;});
+}
 
-  const act = frozen ? 0 : 1;
-
-  for (let y = 0; y < GH; y++) {
-    for (let x = 0; x < GW; x++) {
-      const i = idx(x, y);
-      const xp = (x+1)%GW, xm = (x-1+GW)%GW;
-      const yp = (y+1)%GH, ym = (y-1+GH)%GH;
-
-      const c  = i;
-      const n  = idx(x, yp), s2 = idx(x, ym);
-      const e  = idx(xp, y), w  = idx(xm, y);
-      const ne = idx(xp,yp), nw = idx(xm,yp);
-      const se = idx(xp,ym), sw = idx(xm,ym);
-
-      // Laplacian (9-point isotropic)
-      const lapU = 0.05*(U[ne]+U[nw]+U[se]+U[sw]) + 0.2*(U[n]+U[s2]+U[e]+U[w]) - U[c];
-      const lapV = 0.05*(V[ne]+V[nw]+V[se]+V[sw]) + 0.2*(V[n]+V[s2]+V[e]+V[w]) - V[c];
-
-      // Adaptive F/K
-      const drift = Math.abs(U[c]-Uavg[c]) + Math.abs(V[c]-Vavg[c]);
-      const stab  = 1 - Math.min(1, drift * 6);
-      const vC    = Math.max(0, Math.min(1, (Vavg[c]-0.3)*2));
-      const uC    = Math.max(0, Math.min(1, (Uavg[c]-0.5)*2));
-      const fkw   = 1 - age[c]*0.5;
-      const lF    = Math.max(0.02, Math.min(0.08, F0 + 0.006*(uC*0.6-vC*0.8)*stab*fkw));
-      const lK    = Math.max(0.045, Math.min(0.075, K0 + 0.004*(drift*3-stab*0.3)*fkw));
-
-      const Ucur = U[c], Vcur = V[c];
-      const UVV  = Ucur * Vcur * Vcur;
-      const dU   = Du[c]*lapU - UVV + lF*(1-Ucur);
-      const dV   = Dv[c]*lapV + UVV - (lF+lK)*Vcur;
-
-      newU[i] = Math.max(0, Math.min(1, Ucur + dU));
-      newV[i] = Math.max(0, Math.min(1, Vcur + dV));
-
-      // ── HISTORY + EROSION ──
-      const age_res = 1 - age[c]*0.7;
-      const erosion = UVV * pEros * act * age_res;
-      newUavg[i] = Math.max(0, Math.min(1, (1-erosion) * (Uavg[c]*(1-ALPHA*act) + Ucur*ALPHA*act) + erosion*0.5));
-      newVavg[i] = Math.max(0, Math.min(1, (1-erosion*0.6) * (Vavg[c]*(1-ALPHA*act) + Vcur*ALPHA*act)));
-
-      const stability = Math.max(0, 1 - drift*8);
-      let nAge = drift > 0.083
-        ? age[c] * 0.97
-        : age[c] + 0.00004*stability*act;
-      nAge = Math.max(0, Math.min(1, nAge - erosion*0.5));
-      newAge[i] = nAge;
-
-      // ── SEISMIC STRESS ──
-      const vCommit = Math.max(0, Math.min(1, (Vavg[c]-0.1)*2));
-      const uCommit = Math.max(0, Math.min(1, (Uavg[c]-0.4)*2));
-      const commit  = Math.max(vCommit, uCommit);
-      const lock    = age[c]*stability*commit;
-      const sBuild  = lock * pStressRate * act;
-
-      const aN = age[idx(x,yp)], aS = age[idx(x,ym)];
-      const aE = age[idx(xp,y)], aW = age[idx(xm,y)];
-      const sN = stress[idx(x,yp)], sS = stress[idx(x,ym)];
-      const sE = stress[idx(xp,y)], sW = stress[idx(xm,y)];
-      const wN=0.2+aN*0.8, wS=0.2+aS*0.8, wE=0.2+aE*0.8, wW=0.2+aW*0.8;
-      const wSum=wN+wS+wE+wW;
-      const nbrS=(sN*wN+sS*wS+sE*wE+sW*wW)/wSum;
-      const sDiff=(nbrS-stress[c])*pStressDiff*act;
-      newStress[i] = Math.max(0, Math.min(1, stress[c]+sBuild+sDiff-0.0001*act));
-
-      // ── DIFFUSION ADAPTATION ──
-      // Memory diffusion (age-weighted neighbors)
-      const DuN=Du[idx(x,yp)],DuS=Du[idx(x,ym)],DuE=Du[idx(xp,y)],DuW=Du[idx(xm,y)];
-      const DvN=Dv[idx(x,yp)],DvS=Dv[idx(x,ym)],DvE=Dv[idx(xp,y)],DvW=Dv[idx(xm,y)];
-      const DuAvg=(DuN*wN+DuS*wS+DuE*wE+DuW*wW)/wSum;
-      const DvAvg=(DvN*wN+DvS*wS+DvE*wE+DvW*wW)/wSum;
-      let nDu = Du[c] + (DuAvg-Du[c])*pMemD*act;
-      let nDv = Dv[c] + (DvAvg-Dv[c])*pMemD*act;
-
-      // Competitive exclusion — normalized (0-1 range)
-      const DuNorm = (nDu-DU_LO)/(DU_HI-DU_LO);
-      const DvNorm = (nDv-DV_LO)/(DV_HI-DV_LO);
-      const vSig = Math.min(1, Vavg[c]*1.5);
-      const uSig = Math.min(1, Uavg[c]*1.2);
-      let tDv = 0.3 + 0.65*vSig;
-      let tDu = 0.7 - 0.55*vSig*pExcl;
-      tDu = tDu*0.5 + Math.max(tDu, 0.2+0.7*uSig)*0.5;
-      tDv = tDv*0.5 + Math.min(tDv, 0.9-0.8*uSig*pExcl)*0.5;
-      const rdrift = Math.abs(DuNorm-tDu)+Math.abs(DvNorm-tDv);
-      const df = Math.min(1, rdrift*3);
-      tDu = tDu*(1-df*0.4) + 0.5*df*0.4;
-      tDv = tDv*(1-df*0.4) + 0.5*df*0.4;
-      nDu = DU_LO + Math.max(0,Math.min(1, DuNorm + (tDu-DuNorm)*pAdapt*act)) * (DU_HI-DU_LO);
-      nDv = DV_LO + Math.max(0,Math.min(1, DvNorm + (tDv-DvNorm)*pAdapt*act)) * (DV_HI-DV_LO);
-
-      // Boundary tension
-      const DuN2=(nDu-DU_LO)/(DU_HI-DU_LO), DvN2=(nDv-DV_LO)/(DV_HI-DV_LO);
-      const ageLock = 1 - age[c]*0.65;
-      const cdSup = 1 - cooldown[c];
-      const contested = (1-Math.abs(DuN2-DvN2))*(1-Math.abs(DuN2+DvN2-1))*Math.max(0.15,Math.min(1,rdrift*4));
-      const tN=tension[idx(x,yp)],tS=tension[idx(x,ym)],tE=tension[idx(xp,y)],tW=tension[idx(xm,y)];
-      let newT = tension[c]*0.9 + contested*0.1*ageLock*cdSup + (tN+tS+tE+tW)*0.0375*ageLock*cdSup;
-      newT = Math.max(0, Math.min(1, newT));
-
-      let cd = cooldown[c];
-
-      // Boundary fault rupture
-      if (act && newT > pRupt) {
-        const over = Math.min(1, (newT-pRupt)/(1-pRupt));
-        const slip = Math.min(0.55, 0.15 + over*0.4) * pDamp;
-        nDu = nDu + (DU_DEF-nDu)*slip;
-        nDv = nDv + (DV_DEF-nDv)*slip;
-        newT *= (1-slip*0.8);
-        cd = Math.min(1, cd + pRefr*over);
-      }
-
-      // Ancient fault rupture
-      const brittleness = age[c]*0.45;
-      const effThresh = pBrittle*(1-brittleness);
-      if (act && newStress[i] > effThresh && age[c] > 0.4) {
-        const over = Math.min(1, (newStress[i]-effThresh)/(1-effThresh));
-        const scatter = Math.min(0.9, 0.3+over*0.6);
-        const noiseU = 0.45 + Math.random()*0.1;
-        const noiseV = 0.45 + Math.random()*0.1;
-        nDu = nDu + (DU_LO+(noiseU*(DU_HI-DU_LO))-nDu)*scatter;
-        nDv = nDv + (DV_LO+(noiseV*(DV_HI-DV_LO))-nDv)*scatter;
-        newStress[i] *= (1-scatter*0.8);
-        newT = Math.min(1, newT + scatter*0.7);
-        cd = Math.min(1, cd + scatter*0.8);
-      }
-
-      cd = Math.max(0, cd - 0.003*act);
-      newCooldown[i] = cd;
-      newTension[i]  = newT;
-      newDu[i] = Math.max(DU_LO, Math.min(DU_HI, nDu));
-      newDv[i] = Math.max(DV_LO, Math.min(DV_HI, nDv));
+function seed(){
+  const d=new Uint8Array(W*H*4);
+  for(let i=0;i<W*H;i++){d[i*4]=255;d[i*4+3]=255;}
+  const n=Math.floor(W*H*.002);
+  for(let s=0;s<n;s++){
+    const cx=Math.floor(Math.random()*W),cy=Math.floor(Math.random()*H);
+    const r=2+Math.floor(Math.random()*5);
+    for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+      if(dx*dx+dy*dy>r*r)continue;
+      const x=(cx+dx+W)%W,y=(cy+dy+H)%H,i=(y*W+x)*4;
+      d[i]=128;d[i+1]=230;
     }
   }
-
-  U.set(newU); V.set(newV);
-  Du.set(newDu); Dv.set(newDv);
-  tension.set(newTension); cooldown.set(newCooldown);
-  Uavg.set(newUavg); Vavg.set(newVavg);
-  age.set(newAge); stress.set(newStress);
+  [tC0,tC1].forEach(t=>{gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,W,H,0,gl.RGBA,gl.UNSIGNED_BYTE,d);});
+  tick=0;
 }
 
-// ── RENDER ──
-function pal4(t, r0,g0,b0, r1,g1,b1, r2,g2,b2, r3,g3,b3) {
-  let r,g,b;
-  if (t<0.33) { const f=t/0.33; r=r0+(r1-r0)*f; g=g0+(g1-g0)*f; b=b0+(b1-b0)*f; }
-  else if (t<0.66) { const f=(t-0.33)/0.33; r=r1+(r2-r1)*f; g=g1+(g2-g1)*f; b=b1+(b2-b1)*f; }
-  else { const f=(t-0.66)/0.34; r=r2+(r3-r2)*f; g=g2+(g3-g2)*f; b=b2+(b3-b2)*f; }
-  return [r|0, g|0, b|0];
+function resetMem(){
+  const duE=Math.round(((DU_DEF-DU_LO)/(DU_HI-DU_LO))*255);
+  const dvE=Math.round(((DV_DEF-DV_LO)/(DV_HI-DV_LO))*255);
+  const dd=new Uint8Array(W*H*4);
+  for(let i=0;i<W*H;i++){dd[i*4]=duE;dd[i*4+1]=dvE;dd[i*4+3]=255;}
+  const hd=new Uint8Array(W*H*4);
+  for(let i=0;i<W*H;i++){hd[i*4]=255;hd[i*4+3]=255;}
+  [tD0,tD1].forEach(t=>{gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,W,H,0,gl.RGBA,gl.UNSIGNED_BYTE,dd);});
+  [tH0,tH1].forEach(t=>{gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,W,H,0,gl.RGBA,gl.UNSIGNED_BYTE,hd);});
 }
 
-function render() {
-  let totalT=0, totalS=0;
-  ageDist.fill(0); stressDist.fill(0);
-  const n = GW*GH;
-
-  for (let i = 0; i < n; i++) {
-    let r, g, b;
-    if (view === 'chem') {
-      const t = Math.max(0,Math.min(1, 1-(U[i]-V[i])*1.2));
-      [r,g,b] = pal4(t, 2,3,10, 10,30,77, 178,209,235, 255,200,82);
-      // tension overlay
-      const to = Math.max(0, tension[i]*2-0.7);
-      r = r+(255-r)*to*0.18|0; g = g+(90-g)*to*0.18|0; b = b+(20-b)*to*0.18|0;
-    } else if (view === 'age') {
-      const a = age[i];
-      if (a<0.25) { const f=a/0.25; r=31+(160-31)*f|0; g=209+(107-209)*f|0; b=158+(26-158)*f|0; }
-      else if (a<0.6) { const f=(a-0.25)/0.35; r=160+(71-160)*f|0; g=107+(18-107)*f|0; b=26+(8-26)*f|0; }
-      else { const f=(a-0.6)/0.4; r=71+(18-71)*f|0; g=18+(5-18)*f|0; b=8+(3-8)*f|0; }
-      // stress glow
-      const sg = Math.max(0, stress[i]*age[i]*3-0.5);
-      r=Math.min(255,r+(200-r)*sg*0.25)|0;
-    } else if (view === 'stress') {
-      const s = stress[i]*age[i];
-      [r,g,b] = pal4(Math.min(1,s*2), 5,3,10, 89,5,64, 230,36,10, 255,242,150);
-      // cooldown flash
-      const cf = cooldown[i];
-      r=Math.min(255,r+(255-r)*cf*0.5)|0; g=Math.min(255,g+(230-g)*cf*0.5)|0; b=Math.min(255,b+(179-b)*cf*0.5)|0;
-    } else if (view === 'tension') {
-      [r,g,b] = pal4(Math.min(1,tension[i]*1.5), 3,1,5, 77,5,46, 217,36,10, 255,230,153);
-      const cf = cooldown[i];
-      r=Math.min(255,r+(13-r)*cf*0.5)|0; g=Math.min(255,g+(20-g)*cf*0.5)|0; b=Math.min(255,b+(64-b)*cf*0.5)|0;
-    } else { // territory
-      const DuN=(Du[i]-DU_LO)/(DU_HI-DU_LO);
-      const DvN=(Dv[i]-DV_LO)/(DV_HI-DV_LO);
-      const vD=Math.max(0,Math.min(1,(DvN-DuN+0.3)*2));
-      const uD=Math.max(0,Math.min(1,(DuN-DvN+0.3)*2));
-      const depth=1-age[i]*0.4;
-      r=(20*depth*uD + 153*depth*vD)|0;
-      g=(38*depth*uD + 46*depth*vD)|0;
-      b=(128*depth*uD + 13*depth*vD)|0;
-      // contested glow
-      const cont=Math.min(1,tension[i]*8)*Math.max(0,1-Math.abs(DuN-DvN)*4);
-      r=Math.min(255,r+(242-r)*cont*cont)|0;
-      g=Math.min(255,g+(230-g)*cont*cont)|0;
-      b=Math.min(255,b+(217-b)*cont*cont)|0;
-    }
-    pixels[i*4]   = r;
-    pixels[i*4+1] = g;
-    pixels[i*4+2] = b;
-    pixels[i*4+3] = 255;
-
-    totalT += tension[i];
-    totalS += stress[i];
-    const ab=Math.min(AGE_BINS-1,age[i]*AGE_BINS|0);
-    const sb=Math.min(STRESS_BINS-1,stress[i]*STRESS_BINS|0);
-    ageDist[ab]++;
-    stressDist[sb]++;
-  }
-
-  // Scale and blit
-  ctx.putImageData(imgData, 0, 0);
-  // Scale up to fill screen
-  ctx.drawImage(canvas, 0, 0, GW, GH, 0, 0, W, H);
-
-  // Observatory data
-  const avgT = totalT/n, avgS = totalS/n;
-  seismoT[seismoIdx] = avgT;
-  seismoS[seismoIdx] = avgS;
-  seismoIdx = (seismoIdx+1)%SEISMO_LEN;
-
-  const deltaT = avgT-prevTension, deltaS = avgS-prevStress;
-  if (deltaT > 0.012) eventLog.push({tick, type:'boundary', mag:Math.min(1,deltaT*20)});
-  if (deltaS < -0.008 && prevStress > 0.04) eventLog.push({tick, type:'ancient', mag:Math.min(1,Math.abs(deltaS)*15)});
-  if (eventLog.length > 400) eventLog.shift();
-  prevTension=avgT; prevStress=avgS;
+// ═══════════════ GEOLOGY SAVE/LOAD ═══════════════
+function saveGeo(){
+  const dp=new Uint8Array(W*H*4),hp=new Uint8Array(W*H*4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,rD?fD1:fD0);
+  gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,dp);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,rH?fH1:fH0);
+  gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,hp);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  saved={w:W,h:H,d:new Uint8Array(dp),h2:new Uint8Array(hp),tick:tick};
+  document.getElementById('geo-status').textContent='geology: saved @ gen '+tick.toLocaleString();
+  document.getElementById('geo-status').style.color='rgba(255,180,80,0.3)';
+  logMsg('geology saved');
+}
+function loadGeo(){
+  if(!saved||saved.w!==W||saved.h!==H)return;
+  [tD0,tD1].forEach(t=>{gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,W,H,0,gl.RGBA,gl.UNSIGNED_BYTE,saved.d);});
+  [tH0,tH1].forEach(t=>{gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,W,H,0,gl.RGBA,gl.UNSIGNED_BYTE,saved.h2);});
+  document.getElementById('geo-status').textContent='geology: loaded from gen '+saved.tick.toLocaleString();
+  document.getElementById('geo-status').style.color='rgba(120,200,140,0.3)';
+  logMsg('geology loaded');
+}
+function transplant(){
+  if(!saved)saveGeo();
+  loadGeo();seed();
+  document.getElementById('geo-status').textContent='transplant: old terrain + new chemistry';
+  document.getElementById('geo-status').style.color='rgba(180,120,255,0.3)';
+  logMsg('transplant — old geology meets new chemistry');
+  eventLog.push({tick,type:'transplant',mag:1.0});
 }
 
-// ── OBSERVATORY RENDERING ──
-function resizeObs() {
-  const h = 90;
-  const w = Math.floor(window.innerWidth/4);
-  [seismoCanvas,ageCanvas,stressCanvas,timeCanvas].forEach(c=>{c.width=w;c.height=h;});
+// ═══════════════ RENDER PIPELINE ═══════════════
+function sT(p,n,u,t){gl.activeTexture(gl.TEXTURE0+u);gl.bindTexture(gl.TEXTURE_2D,t);gl.uniform1i(gl.getUniformLocation(p,n),u);}
+const u1=(p,n,v)=>gl.uniform1f(gl.getUniformLocation(p,n),v);
+const u2=(p,n,a,b)=>gl.uniform2f(gl.getUniformLocation(p,n),a,b);
+const ui=(p,n,v)=>gl.uniform1i(gl.getUniformLocation(p,n),v);
+
+let rC=0,rD=0,rH=0;
+const gC=r=>r?tC1:tC0,gCf=r=>r?fC1:fC0;
+const gD=r=>r?tD1:tD0,gDf=r=>r?fD1:fD0;
+const gH=r=>r?tH1:tH0,gHf=r=>r?fH1:fH0;
+
+function stepRD(){
+  gl.useProgram(pRD);bQ(pRD);
+  sT(pRD,'tC',0,gC(rC));sT(pRD,'tD',1,gD(rD));sT(pRD,'tH',2,gH(rH));
+  u2(pRD,'res',W,H);u1(pRD,'F',F0);u1(pRD,'K',K0);u1(pRD,'dt',1.);
+  u1(pRD,'DuL',DU_LO);u1(pRD,'DuH',DU_HI);u1(pRD,'DvL',DV_LO);u1(pRD,'DvH',DV_HI);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,gCf(1-rC));
+  gl.viewport(0,0,W,H);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);rC=1-rC;
 }
-
-function drawObs() {
-  if (!obsOpen) return;
-  drawSeismo(); drawAgeHist(); drawStressHist(); drawTimeline();
+function stepHist(){
+  gl.useProgram(pHist);bQ(pHist);
+  sT(pHist,'tC',0,gC(rC));sT(pHist,'tH',1,gH(rH));
+  u2(pHist,'res',W,H);u1(pHist,'alpha',HIST_A);u1(pHist,'freeze',frozen?1:0);
+  u1(pHist,'erosStr',pEros*10.);u1(pHist,'stressRate',pStressRate);u1(pHist,'stressDiff',pStressDiff);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,gHf(1-rH));
+  gl.viewport(0,0,W,H);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);rH=1-rH;
 }
-
-function drawSeismo() {
-  const c=seismoCanvas.getContext('2d'), w=c.canvas.width, h=c.canvas.height;
-  c.fillStyle='rgba(0,0,0,0.95)'; c.fillRect(0,0,w,h);
-  c.fillStyle='rgba(255,255,255,0.1)'; c.font='6px Courier New'; c.fillText('SEISMO',3,8);
-  const bw=w/SEISMO_LEN;
-  c.beginPath(); c.strokeStyle='rgba(255,160,60,0.6)'; c.lineWidth=1;
-  for(let i=0;i<SEISMO_LEN;i++){const di=(seismoIdx+i)%SEISMO_LEN;const x=i*bw;const y=h-6-seismoT[di]*(h-12);if(i===0)c.moveTo(x,y);else c.lineTo(x,y);}c.stroke();
-  c.beginPath(); c.strokeStyle='rgba(255,50,30,0.5)'; c.lineWidth=1;
-  for(let i=0;i<SEISMO_LEN;i++){const di=(seismoIdx+i)%SEISMO_LEN;const x=i*bw;const y=h-6-seismoS[di]*(h-12);if(i===0)c.moveTo(x,y);else c.lineTo(x,y);}c.stroke();
+function stepDiff(){
+  gl.useProgram(pDiff);bQ(pDiff);
+  sT(pDiff,'tD',0,gD(rD));sT(pDiff,'tH',1,gH(rH));
+  u2(pDiff,'res',W,H);u1(pDiff,'rate',pAdapt);u1(pDiff,'freeze',frozen?1:0);
+  u1(pDiff,'memD',pMemD);u1(pDiff,'excl',pExcl);
+  u1(pDiff,'ruptThr',pRupt);u1(pDiff,'damp',pDamp);u1(pDiff,'refrStr',pRefr);
+  u1(pDiff,'brittleThr',pBrittle);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,gDf(1-rD));
+  gl.viewport(0,0,W,H);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);rD=1-rD;
 }
-
-function drawAgeHist() {
-  const c=ageCanvas.getContext('2d'), w=c.canvas.width, h=c.canvas.height;
-  c.fillStyle='rgba(0,0,0,0.95)'; c.fillRect(0,0,w,h);
-  c.fillStyle='rgba(255,255,255,0.1)'; c.font='6px Courier New'; c.fillText('AGE DIST',3,8);
-  const mx=Math.max(1,...ageDist);
-  const bw=w/AGE_BINS;
-  for(let i=0;i<AGE_BINS;i++){const v=ageDist[i]/mx;const t=i/AGE_BINS;const r=(30+t*200)|0,g=(200-t*170)|0,b=(150-t*130)|0;c.fillStyle=`rgba(${r},${g},${b},0.5)`;c.fillRect(i*bw,h-6-v*(h-12),Math.max(1,bw-1),v*(h-12));}
+function display(){
+  gl.useProgram(pDisp);bQ(pDisp);
+  sT(pDisp,'tC',0,gC(rC));sT(pDisp,'tD',1,gD(rD));sT(pDisp,'tH',2,gH(rH));
+  const m={chem:0,mem:1,age:2,stress:3,tension:4,terr:5,erosion:6};
+  ui(pDisp,'mode',m[view]||0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.viewport(0,0,mainCanvas.width,mainCanvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 }
-
-function drawStressHist() {
-  const c=stressCanvas.getContext('2d'), w=c.canvas.width, h=c.canvas.height;
-  c.fillStyle='rgba(0,0,0,0.95)'; c.fillRect(0,0,w,h);
-  c.fillStyle='rgba(255,255,255,0.1)'; c.font='6px Courier New'; c.fillText('STRESS',3,8);
-  const mx=Math.max(1,...stressDist);
-  const bw=w/STRESS_BINS;
-  // Mark brittle threshold
-  const tx=pBrittle*w;
-  c.strokeStyle='rgba(255,80,30,0.3)'; c.lineWidth=1;
-  c.beginPath(); c.moveTo(tx,0); c.lineTo(tx,h); c.stroke();
-  for(let i=0;i<STRESS_BINS;i++){const v=stressDist[i]/mx;const t=i/STRESS_BINS;const r=(10+t*200)|0,g=(5+t*20)|0,b=(20-t*10)|0;c.fillStyle=`rgba(${r},${g},${b},0.55)`;c.fillRect(i*bw,h-6-v*(h-12),Math.max(1,bw-1),v*(h-12));}
+function paint(mx,my,mode){
+  gl.useProgram(pPaint);bQ(pPaint);sT(pPaint,'tC',0,gC(rC));
+  u2(pPaint,'res',W,H);u2(pPaint,'mouse',mx,my);
+  u1(pPaint,'rad',W*.045);u1(pPaint,'pmode',mode);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,gCf(1-rC));
+  gl.viewport(0,0,W,H);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);rC=1-rC;
 }
-
-function drawTimeline() {
-  const c=timeCanvas.getContext('2d'), w=c.canvas.width, h=c.canvas.height;
-  c.fillStyle='rgba(0,0,0,0.95)'; c.fillRect(0,0,w,h);
-  c.fillStyle='rgba(255,255,255,0.1)'; c.font='6px Courier New'; c.fillText('EVENTS',3,8);
-  if (eventLog.length < 2) return;
-  const t0=eventLog[0].tick, t1=Math.max(t0+1,eventLog[eventLog.length-1].tick);
-  const span=t1-t0;
-  for(const ev of eventLog){
-    const x=((ev.tick-t0)/span)*w;
-    const ht=(h-10)*ev.mag;
-    c.fillStyle=ev.type==='boundary'?`rgba(255,160,60,0.6)`:`rgba(255,50,30,0.7)`;
-    c.fillRect(x-0.5,h-5-ht,1.5,ht);
-  }
-}
-
-// ── INPUT ──
-let touching=false, touchShift=false;
-let lastTap=0;
-
-function toGrid(cx,cy){
-  return [Math.floor(cx/W*GW), Math.floor(cy/H*GH)];
-}
-
-function paintAt(cx,cy,isU){
-  const [gx,gy]=toGrid(cx,cy);
-  const r=Math.max(2,Math.floor(GW*0.04));
-  for(let dy=-r;dy<=r;dy++) for(let dx=-r;dx<=r;dx++){
-    if(dx*dx+dy*dy>r*r) continue;
-    const x=(gx+dx+GW)%GW, y=(gy+dy+GH)%GH;
-    const i=idx(x,y);
-    if(isU){U[i]=Math.min(1,U[i]+0.5);V[i]=Math.max(0,V[i]-0.3);}
-    else{V[i]=Math.min(1,V[i]+0.7);U[i]=Math.max(0,U[i]-0.2);}
-  }
-}
-
-function quakeAt(cx,cy){
-  const [gx,gy]=toGrid(cx,cy);
-  const r=Math.max(3,Math.floor(GW*0.12));
-  for(let dy=-r;dy<=r;dy++) for(let dx=-r;dx<=r;dx++){
-    if(dx*dx+dy*dy>r*r) continue;
-    const x=(gx+dx+GW)%GW, y=(gy+dy+GH)%GH;
-    const i=idx(x,y);
-    const str=1-Math.sqrt(dx*dx+dy*dy)/r;
-    stress[i]=Math.min(1,stress[i]+str*0.9);
-    age[i]=Math.min(1,age[i]+str*0.5);
-  }
+function quake(cx,cy){
+  gl.useProgram(pQuake);bQ(pQuake);sT(pQuake,'tH',0,gH(rH));
+  u2(pQuake,'res',W,H);u2(pQuake,'center',cx,cy);u1(pQuake,'rad',W*pQuakeRad*.3);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,gHf(1-rH));
+  gl.viewport(0,0,W,H);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);rH=1-rH;
   qAncient++;
-  document.getElementById('q-a').textContent='ancient: '+qAncient;
+  document.getElementById('q-ancient').textContent='ancient: '+qAncient;
+  logMsg('ancient quake @ gen '+tick.toLocaleString());
+  eventLog.push({tick,type:'ancient',mag:0.9});
 }
 
-canvas.addEventListener('touchstart',e=>{
-  e.preventDefault(); touching=true;
-  const now=Date.now();
-  if(now-lastTap<300){quakeAt(e.touches[0].clientX,e.touches[0].clientY);}
-  lastTap=now;
-  paintAt(e.touches[0].clientX,e.touches[0].clientY,false);
-},{passive:false});
-canvas.addEventListener('touchend',e=>{e.preventDefault();touching=false;},{passive:false});
-canvas.addEventListener('touchmove',e=>{
-  e.preventDefault();
-  if(touching) paintAt(e.touches[0].clientX,e.touches[0].clientY,false);
-},{passive:false});
-canvas.addEventListener('mousedown',e=>{touching=true;paintAt(e.clientX,e.clientY,e.shiftKey);});
-canvas.addEventListener('mouseup',()=>touching=false);
-canvas.addEventListener('mousemove',e=>{if(touching)paintAt(e.clientX,e.clientY,e.shiftKey);});
-canvas.addEventListener('dblclick',e=>quakeAt(e.clientX,e.clientY));
+function logMsg(msg){
+  const el=document.getElementById('log');
+  const d=document.createElement('div');d.textContent=msg;d.style.opacity='0.55';
+  el.insertBefore(d,el.firstChild);
+  setTimeout(()=>d.style.opacity='0.15',3000);
+  while(el.children.length>8)el.removeChild(el.lastChild);
+}
 
-// ── UI ──
-const viewBtns={'v-chem':'chem','v-age':'age','v-stress':'stress','v-tension':'tension','v-terr':'terr'};
-Object.entries(viewBtns).forEach(([id,mode])=>{
+// ═══════════════ OBSERVATORY — INSTRUMENT SAMPLING ═══════════════
+// Sample a sparse grid from the GPU every N frames.
+// Not every pixel — that would kill framerate.
+// Instead: read a downsampled stripe and compute statistics.
+
+const SAMPLE_SIZE=64; // 64x64 grid = 4096 samples
+const SAMPLE_EVERY=12; // frames between samples
+let sampleBuf=new Uint8Array(SAMPLE_SIZE*SAMPLE_SIZE*4);
+let prevTensionSum=0;
+let prevStressSum=0;
+
+function sampleState(){
+  // Read from hist texture (age in B, stress in A)
+  gl.bindFramebuffer(gl.FRAMEBUFFER,rH?fH1:fH0);
+  // Read a SAMPLE_SIZE x SAMPLE_SIZE block from the center
+  const ox=Math.floor((W-SAMPLE_SIZE)/2);
+  const oy=Math.floor((H-SAMPLE_SIZE)/2);
+  gl.readPixels(ox,oy,SAMPLE_SIZE,SAMPLE_SIZE,gl.RGBA,gl.UNSIGNED_BYTE,sampleBuf);
+
+  // Compute age and stress distributions
+  ageDist.fill(0);
+  stressDist.fill(0);
+  let totalStress=0;
+  const n=SAMPLE_SIZE*SAMPLE_SIZE;
+
+  for(let i=0;i<n;i++){
+    const age=sampleBuf[i*4+2]/255;
+    const stress=sampleBuf[i*4+3]/255;
+    const aBin=Math.min(AGE_BINS-1,Math.floor(age*AGE_BINS));
+    const sBin=Math.min(STRESS_BINS-1,Math.floor(stress*STRESS_BINS));
+    ageDist[aBin]++;
+    stressDist[sBin]++;
+    totalStress+=stress;
+  }
+
+  // Now read diff texture for boundary tension
+  const diffBuf=new Uint8Array(SAMPLE_SIZE*SAMPLE_SIZE*4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,rD?fD1:fD0);
+  gl.readPixels(ox,oy,SAMPLE_SIZE,SAMPLE_SIZE,gl.RGBA,gl.UNSIGNED_BYTE,diffBuf);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+
+  let totalTension=0;
+  for(let i=0;i<n;i++){
+    totalTension+=diffBuf[i*4+2]/255;
+  }
+
+  const avgTension=totalTension/n;
+  const avgStress=totalStress/n;
+
+  // Detect events by spike detection
+  const tensionDelta=avgTension-prevTensionSum;
+  const stressDelta=avgStress-prevStressSum;
+
+  if(tensionDelta>0.015){
+    qBoundary++;
+    document.getElementById('q-boundary').textContent='· boundary: '+qBoundary;
+    eventLog.push({tick,type:'boundary',mag:Math.min(1,tensionDelta*20)});
+    if(eventLog.length>MAX_EVENTS)eventLog.shift();
+  }
+  if(stressDelta<-0.01&&prevStressSum>0.05){
+    // Stress DROP = ancient rupture event (stress consumed)
+    eventLog.push({tick,type:'ancient_auto',mag:Math.min(1,Math.abs(stressDelta)*15)});
+    if(eventLog.length>MAX_EVENTS)eventLog.shift();
+  }
+
+  prevTensionSum=avgTension;
+  prevStressSum=avgStress;
+
+  // Push to seismograph
+  const idx=seismoData.idx;
+  seismoData.tension[idx]=avgTension;
+  seismoData.stress[idx]=avgStress;
+  seismoData.idx=(idx+1)%SEISMO_LEN;
+}
+
+// ═══════════════ INSTRUMENT RENDERING (2D Canvas) ═══════════════
+
+function drawSeismo(){
+  const ctx=seismoCtx,w=seismoCanvas.width,h=seismoCanvas.height;
+  ctx.fillStyle='rgba(0,0,0,0.92)';ctx.fillRect(0,0,w,h);
+
+  // Label
+  ctx.fillStyle='rgba(255,255,255,0.12)';
+  ctx.font='7px Courier New';ctx.fillText('SEISMOGRAPH',4,10);
+
+  const idx=seismoData.idx;
+  const barW=w/SEISMO_LEN;
+
+  // Draw tension trace (orange)
+  ctx.beginPath();
+  ctx.strokeStyle='rgba(255,160,60,0.5)';ctx.lineWidth=1;
+  for(let i=0;i<SEISMO_LEN;i++){
+    const di=(idx+i)%SEISMO_LEN;
+    const x=i*barW;
+    const y=h-10-seismoData.tension[di]*(h-20);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Draw stress trace (deep red)
+  ctx.beginPath();
+  ctx.strokeStyle='rgba(255,50,30,0.4)';ctx.lineWidth=1;
+  for(let i=0;i<SEISMO_LEN;i++){
+    const di=(idx+i)%SEISMO_LEN;
+    const x=i*barW;
+    const y=h-10-seismoData.stress[di]*(h-20);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Legend
+  ctx.fillStyle='rgba(255,160,60,0.35)';ctx.fillText('tension',w-50,10);
+  ctx.fillStyle='rgba(255,50,30,0.30)';ctx.fillText('stress',w-50,20);
+}
+
+function drawAgeHist(){
+  const ctx=ageCtx,w=ageCanvas.width,h=ageCanvas.height;
+  ctx.fillStyle='rgba(0,0,0,0.92)';ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle='rgba(255,255,255,0.12)';
+  ctx.font='7px Courier New';ctx.fillText('AGE DISTRIBUTION',4,10);
+
+  const maxVal=Math.max(1,...ageDist);
+  const barW=w/AGE_BINS;
+
+  for(let i=0;i<AGE_BINS;i++){
+    const v=ageDist[i]/maxVal;
+    const x=i*barW;
+    const barH=v*(h-18);
+
+    // Color by age: young=cyan, old=ember
+    const t=i/AGE_BINS;
+    const r=Math.floor(30+t*200);
+    const g=Math.floor(200-t*170);
+    const b=Math.floor(150-t*130);
+    ctx.fillStyle=`rgba(${r},${g},${b},0.45)`;
+    ctx.fillRect(x,h-8-barH,Math.max(1,barW-1),barH);
+  }
+
+  // Axis labels
+  ctx.fillStyle='rgba(255,255,255,0.08)';
+  ctx.fillText('young',4,h-1);
+  ctx.fillText('ancient',w-40,h-1);
+}
+
+function drawStressHist(){
+  const ctx=stressCtx,w=stressCanvas.width,h=stressCanvas.height;
+  ctx.fillStyle='rgba(0,0,0,0.92)';ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle='rgba(255,255,255,0.12)';
+  ctx.font='7px Courier New';ctx.fillText('STRESS DISTRIBUTION',4,10);
+
+  const maxVal=Math.max(1,...stressDist);
+  const barW=w/STRESS_BINS;
+
+  // Draw brittle threshold line
+  const thrX=pBrittle*w;
+  ctx.strokeStyle='rgba(255,60,30,0.25)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(thrX,14);ctx.lineTo(thrX,h-8);ctx.stroke();
+  ctx.fillStyle='rgba(255,60,30,0.18)';ctx.fillText('brittle',thrX+3,22);
+
+  for(let i=0;i<STRESS_BINS;i++){
+    const v=stressDist[i]/maxVal;
+    const x=i*barW;
+    const barH=v*(h-18);
+    const t=i/STRESS_BINS;
+
+    // Color: low stress=dark, near threshold=magenta, above=red
+    const past=t>pBrittle?1:0;
+    const r=Math.floor(60+t*190+past*50);
+    const g=Math.floor(20+t*20);
+    const b=Math.floor(50+t*100-past*80);
+    ctx.fillStyle=`rgba(${r},${g},${b},0.45)`;
+    ctx.fillRect(x,h-8-barH,Math.max(1,barW-1),barH);
+  }
+
+  ctx.fillStyle='rgba(255,255,255,0.08)';
+  ctx.fillText('low',4,h-1);ctx.fillText('critical',w-42,h-1);
+}
+
+function drawTimeline(){
+  const ctx=timeCtx,w=timeCanvas.width,h=timeCanvas.height;
+  ctx.fillStyle='rgba(0,0,0,0.92)';ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle='rgba(255,255,255,0.12)';
+  ctx.font='7px Courier New';ctx.fillText('EVENT TIMELINE',4,10);
+
+  if(eventLog.length===0){
+    ctx.fillStyle='rgba(255,255,255,0.06)';
+    ctx.fillText('waiting for events...',4,h/2);
+    return;
+  }
+
+  const maxTick=tick||1;
+  const margin=14;
+
+  // Draw events as marks
+  for(let i=0;i<eventLog.length;i++){
+    const e=eventLog[i];
+    const x=margin+(e.tick/maxTick)*(w-margin*2);
+    const mag=e.mag||0.5;
+
+    if(e.type==='boundary'){
+      ctx.strokeStyle=`rgba(255,180,60,${0.15+mag*0.35})`;
+      ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(x,h-8);ctx.lineTo(x,h-8-mag*(h-24));ctx.stroke();
+    }else if(e.type==='ancient'||e.type==='ancient_auto'){
+      ctx.strokeStyle=`rgba(255,50,20,${0.2+mag*0.5})`;
+      ctx.lineWidth=e.type==='ancient'?2:1.5;
+      ctx.beginPath();ctx.moveTo(x,h-8);ctx.lineTo(x,margin+4);ctx.stroke();
+      // Red dot at base
+      ctx.fillStyle=`rgba(255,60,20,${0.3+mag*0.3})`;
+      ctx.beginPath();ctx.arc(x,h-8,2,0,Math.PI*2);ctx.fill();
+    }else if(e.type==='transplant'){
+      ctx.strokeStyle='rgba(160,100,255,0.5)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(x,margin+4);ctx.lineTo(x,h-8);ctx.stroke();
+      ctx.fillStyle='rgba(160,100,255,0.3)';
+      ctx.fillText('T',x-2,margin+2);
+    }
+  }
+
+  // Time axis
+  ctx.fillStyle='rgba(255,255,255,0.06)';
+  ctx.fillText('gen 0',margin,h-1);
+  ctx.fillText('gen '+tick.toLocaleString(),w-60,h-1);
+
+  // Legend
+  ctx.fillStyle='rgba(255,180,60,0.25)';ctx.fillText('boundary',w-95,10);
+  ctx.fillStyle='rgba(255,50,20,0.25)';ctx.fillText('ancient',w-48,10);
+}
+
+function drawInstruments(){
+  if(!instOpen)return;
+  drawSeismo();
+  drawAgeHist();
+  drawStressHist();
+  drawTimeline();
+}
+
+// ═══════════════ INPUT ═══════════════
+let mDown=false,mX=0,mY=0,shift=false;
+function toS(cx,cy){
+  const r=mainCanvas.getBoundingClientRect();
+  return[((cx-r.left)/mainCanvas.width)*W,((r.bottom-cy)/mainCanvas.height)*H];
+}
+mainCanvas.addEventListener('mousedown',e=>{mDown=true;shift=e.shiftKey;});
+mainCanvas.addEventListener('mouseup',()=>mDown=false);
+mainCanvas.addEventListener('mousemove',e=>{[mX,mY]=toS(e.clientX,e.clientY);shift=e.shiftKey;});
+mainCanvas.addEventListener('touchstart',e=>{e.preventDefault();mDown=true;[mX,mY]=toS(e.touches[0].clientX,e.touches[0].clientY);},{passive:false});
+mainCanvas.addEventListener('touchend',e=>{e.preventDefault();mDown=false;},{passive:false});
+mainCanvas.addEventListener('touchmove',e=>{e.preventDefault();[mX,mY]=toS(e.touches[0].clientX,e.touches[0].clientY);},{passive:false});
+mainCanvas.addEventListener('dblclick',e=>{const[sx,sy]=toS(e.clientX,e.clientY);quake(sx,sy);});
+
+// ═══════════════ UI ═══════════════
+const viewMap={'v-chem':'chem','v-mem':'mem','v-age':'age','v-stress':'stress',
+               'v-tension':'tension','v-terr':'terr','v-erosion':'erosion'};
+Object.entries(viewMap).forEach(([id,mode])=>{
   document.getElementById(id).onclick=()=>{
     view=mode;
-    Object.keys(viewBtns).forEach(bid=>document.getElementById(bid).classList.toggle('on',bid===id));
+    Object.keys(viewMap).forEach(bid=>document.getElementById(bid).classList.toggle('on',bid===id));
   };
 });
 
-const fBtn=document.getElementById('btn-freeze');
-fBtn.onclick=()=>{frozen=!frozen;fBtn.textContent=frozen?'unfreeze':'freeze memory';fBtn.classList.toggle('on',frozen);};
-document.getElementById('btn-quake').onclick=()=>quakeAt(GW*CELL/2,GH*CELL/2);
-document.getElementById('btn-reset').onclick=()=>{seed();resetMemory();qAncient=0;document.getElementById('q-a').textContent='ancient: 0';eventLog=[];};
+const fbtn=document.getElementById('btn-freeze');
+fbtn.onclick=()=>{frozen=!frozen;fbtn.textContent=frozen?'unfreeze':'freeze memory';fbtn.classList.toggle('on',frozen);};
+document.getElementById('btn-quake').onclick=()=>quake(W*.5,H*.5);
+document.getElementById('btn-save').onclick=saveGeo;
+document.getElementById('btn-transplant').onclick=transplant;
+document.getElementById('btn-reset').onclick=()=>{seed();resetMem();qAncient=0;qBoundary=0;eventLog=[];
+  document.getElementById('q-ancient').textContent='ancient: 0';
+  document.getElementById('q-boundary').textContent='· boundary: 0';
+  document.getElementById('geo-status').textContent='geology: none saved';
+  document.getElementById('geo-status').style.color='rgba(100,160,255,0.25)';
+  seismoData.tension.fill(0);seismoData.stress.fill(0);seismoData.idx=0;};
 document.getElementById('btn-reseed').onclick=seed;
 
-const obsEl=document.getElementById('obs');
-const obsToggle=document.getElementById('obs-toggle');
-obsToggle.onclick=()=>{
-  obsOpen=!obsOpen;
-  obsEl.style.display=obsOpen?'flex':'none';
-  obsToggle.style.bottom=obsOpen?'90px':'0';
-  obsToggle.textContent=obsOpen?'▾ observatory':'▴ observatory';
-  resize();
+// Instrument toggle
+const instToggle=document.getElementById('inst-toggle');
+const instPanel=document.getElementById('instruments');
+const logEl=document.getElementById('log');
+const helpEl=document.getElementById('help');
+instToggle.onclick=()=>{
+  instOpen=!instOpen;
+  instPanel.classList.toggle('open',instOpen);
+  instToggle.classList.toggle('open',instOpen);
+  instToggle.textContent=instOpen?'▾ observatory':'▴ observatory';
+  logEl.classList.toggle('closed',!instOpen);
+  helpEl.classList.toggle('closed',!instOpen);
+  mainCanvas.height=window.innerHeight-(instOpen?160:0);
 };
 
-window.addEventListener('resize',resize);
+function sl(id,dId,fn){
+  const el=document.getElementById(id),dl=document.getElementById(dId);
+  el.addEventListener('input',()=>{const v=el.value/100;dl.textContent=v.toFixed(2);fn(v);});
+}
+sl('s-adapt','d-adapt',v=>pAdapt=v*.004);
+sl('s-memd','d-memd',v=>pMemD=v*.012);
+sl('s-excl','d-excl',v=>pExcl=v);
+sl('s-eros','d-eros',v=>pEros=v*.003);
+sl('s-rupt','d-rupt',v=>pRupt=v);
+sl('s-damp','d-damp',v=>pDamp=v);
+sl('s-refr','d-refr',v=>pRefr=v);
+sl('s-srate','d-srate',v=>pStressRate=v*.000035);
+sl('s-sdiff','d-sdiff',v=>pStressDiff=v*.012);
+sl('s-brit','d-brit',v=>pBrittle=v);
 
-// ── LOOP ──
-// CPU is slower — run fewer steps per frame on mobile
-const STEPS = navigator.hardwareConcurrency > 4 ? 3 : 2;
+window.addEventListener('resize',()=>{initAll();});
 
-resize();
+// ═══════════════ LOOP ═══════════════
+const STEPS=6,ADAPT_EVERY=3;
+let frameCount=0;
+initAll();
 
 function loop(){
-  for(let i=0;i<STEPS;i++) step();
-  tick+=STEPS;
-
-  // Scale-draw: putImageData at grid size then draw scaled
-  ctx.putImageData(imgData,0,0);
-  // Now we need a temp canvas trick to scale up
-  render(); // render writes to imgData at GW×GH
-
-  if(obsOpen && tick%8===0) drawObs();
+  if(mDown)paint(mX,mY,shift?1:0);
+  for(let i=0;i<STEPS;i++){
+    stepRD();
+    if(tick%ADAPT_EVERY===0){stepHist();stepDiff();}
+    tick++;
+  }
+  display();
   document.getElementById('gen-l').textContent='gen '+tick.toLocaleString();
+
+  frameCount++;
+  if(frameCount%SAMPLE_EVERY===0){
+    sampleState();
+    drawInstruments();
+  }
+
   requestAnimationFrame(loop);
 }
-
 loop();
 </script>
 </body>
