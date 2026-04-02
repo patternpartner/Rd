@@ -255,8 +255,7 @@ function displaySubstrate(){
 }
 
 // Particle deposits into substrate
-// Per-particle deposit accumulator — VM WRITE_FIELD adds to this
-const depositAccum=new Float32Array(CAP);
+// Per-particle deposit accumulator — declared after CAP
 
 function depositParticles(){
   const maxBatch=32;
@@ -339,6 +338,7 @@ const FIELD_DIFFUSE=0; // no-op, substrate handles diffusion
 const MAX_CLUSTER_VM=8;    // per-cluster program length — shorter than global, differentiation not replacement
 const CLUSTER_VM_COST_SHARE=0.4; // fraction of metabolic cost vs global VM (lighter programs)
 const CAP=1800; // HARD CEILING for array allocation only — not an ecological limit
+const depositAccum=new Float32Array(CAP); // VM WRITE_FIELD feeds into substrate deposits
 // The real carrying capacity emerges from density-dependent metabolic cost.
 // More particles = higher per-particle cost = amplitude drains faster = natural deaths increase.
 // The system discovers its own equilibrium population.
