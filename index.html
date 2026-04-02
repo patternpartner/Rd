@@ -125,6 +125,8 @@ const SH_DISP=`precision highp float;
 uniform sampler2D tC,tD,tH;varying vec2 uv;
 void main(){
   vec2 ch=texture2D(tC,uv).rg;vec4 df=texture2D(tD,uv);vec4 ht=texture2D(tH,uv);
+  float activity=ch.g*1.5+abs(ch.r-ch.g)*2.0;
+  activity=clamp(activity,0.,1.);
   float t=clamp(1.-(ch.r-ch.g)*1.2,0.,1.);
   vec3 a=vec3(.008,.012,.04),b=vec3(.04,.12,.30),c=vec3(.70,.82,.92),d=vec3(1.,.78,.32);
   vec3 col;
@@ -132,6 +134,7 @@ void main(){
   col=mix(col,vec3(1.,.35,.08),clamp(df.b*2.-.7,0.,1.)*.18);
   float ss=clamp(ht.a*2.5-.5,0.,1.)*ht.b;col=mix(col,vec3(.8,.05,.02),ss*.22);
   col=mix(col,vec3(.3,.5,.9),df.a*.12);
+  col*=activity;
   gl_FragColor=vec4(col,1.);}`;
 
 const SH_DEPOSIT=`precision highp float;
@@ -143,7 +146,7 @@ void main(){
   for(int i=0;i<32;i++){
     if(i>=count)break;
     float d=length(px-pos[i]);
-    if(d<8.){float s=pow(1.-d/8.,2.)*str[i]*0.15;
+    if(d<12.){float s=pow(1.-d/12.,2.)*str[i]*0.4;
       if(typ[i]>0.5){ch.g=min(1.,ch.g+s);ch.r=max(0.,ch.r-s*0.3);}
       else{ch.r=min(1.,ch.r+s);ch.g=max(0.,ch.g-s*0.3);}
     }
@@ -252,6 +255,9 @@ function displaySubstrate(){
 }
 
 // Particle deposits into substrate
+// Per-particle deposit accumulator — VM WRITE_FIELD adds to this
+const depositAccum=new Float32Array(CAP);
+
 function depositParticles(){
   const maxBatch=32;
   const posArr=new Float32Array(maxBatch*2);
@@ -260,10 +266,15 @@ function depositParticles(){
   let count=0;
   for(let i=0;i<N&&count<maxBatch;i++){
     if(!palive[i])continue;
+    // Base deposit from amplitude + accumulated VM WRITE_FIELD energy
+    const vmBoost=Math.abs(depositAccum[i]);
     posArr[count*2]=(px[i]/W)*RDW;
     posArr[count*2+1]=(py[i]/H)*RDH;
-    strArr[count]=Math.min(1,amp[i]*2);
-    typArr[count]=tend[i*DIMS]>0?1:0; // positive tendency → V, negative → U
+    strArr[count]=Math.min(1.5,amp[i]*2+vmBoost*3);
+    // Tendency determines chemical: use full tendency vector, not just dim 0
+    const tendSum=tend[i*DIMS]+tend[i*DIMS+1]+tend[i*DIMS+2];
+    typArr[count]=tendSum>0?1:0;
+    depositAccum[i]*=0.5; // decay accumulator
     count++;
   }
   if(count===0)return;
@@ -2665,7 +2676,7 @@ function executeVM(i,j,sim,d){
       case 6:vmRegs[di]=pMem[i*MEM_SIZE+(Math.abs(src)%MEM_SIZE)];break;
       case 7:pMem[i*MEM_SIZE+(Math.abs(dst)%MEM_SIZE)]=vmRegs[si];break;
       case 8:{const fx8=Math.floor(px[i]/(W/FIELD_W)),fy8=Math.floor(py[i]/(H/FIELD_H));const fi8=Math.max(0,Math.min(FIELD_W*FIELD_H-1,fy8*FIELD_W+fx8));vmRegs[di]=field[fi8];}break;
-      case 9:{const wx9=Math.floor(px[i]/(W/FIELD_W)),wy9=Math.floor(py[i]/(H/FIELD_H));const wi9=Math.max(0,Math.min(FIELD_W*FIELD_H-1,wy9*FIELD_W+wx9));field[wi9]+=vmRegs[si]*k;field[wi9]=Math.max(0,Math.min(2.5,field[wi9]));stampField(wi9,getParticleSig(i),Math.abs(vmRegs[si]*k));}break;
+      case 9:{const wx9=Math.floor(px[i]/(W/FIELD_W)),wy9=Math.floor(py[i]/(H/FIELD_H));const wi9=Math.max(0,Math.min(FIELD_W*FIELD_H-1,wy9*FIELD_W+wx9));field[wi9]+=vmRegs[si]*k;field[wi9]=Math.max(0,Math.min(2.5,field[wi9]));depositAccum[i]+=vmRegs[si]*k;stampField(wi9,getParticleSig(i),Math.abs(vmRegs[si]*k));}break;
       case 10:{if(clusterID[i]>=0){const cIdx10=clusterID[i]<MAX_CLUSTERS?clusterByID[clusterID[i]]:-1;if(cIdx10>=0){const c=clusters[cIdx10];const cfx=Math.floor(c.cx/(W/FIELD_W)),cfy=Math.floor(c.cy/(H/FIELD_H));const cfi=Math.max(0,Math.min(FIELD_W*FIELD_H-1,cfy*FIELD_W+cfx));field[cfi]+=vmRegs[si]*k;field[cfi]=Math.max(0,Math.min(2.5,field[cfi]));stampField(cfi,c.fieldSignature,Math.abs(vmRegs[si]*k));}}}break;
       // ═══ OPEN-ENDED EVOLUTION OPCODES ═══
       // 11: BROADCAST_WRITE — write to own broadcast slot. System invents its own signals.
@@ -3199,7 +3210,7 @@ function executeSoloVM(){
         case 6:vmRegs[di]=pMem[i*MEM_SIZE+(Math.abs(src)%MEM_SIZE)];break;
         case 7:pMem[i*MEM_SIZE+(Math.abs(dst)%MEM_SIZE)]=vmRegs[si];break;
         case 8:{const fx8=Math.floor(px[i]/(W/FIELD_W)),fy8=Math.floor(py[i]/(H/FIELD_H));const fi8=Math.max(0,Math.min(FIELD_W*FIELD_H-1,fy8*FIELD_W+fx8));vmRegs[di]=field[fi8];}break;
-        case 9:{const wx9=Math.floor(px[i]/(W/FIELD_W)),wy9=Math.floor(py[i]/(H/FIELD_H));const wi9=Math.max(0,Math.min(FIELD_W*FIELD_H-1,wy9*FIELD_W+wx9));field[wi9]+=vmRegs[si]*k*0.3;field[wi9]=Math.max(0,Math.min(2.5,field[wi9]));}break;
+        case 9:{const wx9=Math.floor(px[i]/(W/FIELD_W)),wy9=Math.floor(py[i]/(H/FIELD_H));const wi9=Math.max(0,Math.min(FIELD_W*FIELD_H-1,wy9*FIELD_W+wx9));field[wi9]+=vmRegs[si]*k*0.3;field[wi9]=Math.max(0,Math.min(2.5,field[wi9]));depositAccum[i]+=vmRegs[si]*k*0.3;}break;
         case 11:{const slot=Math.abs(dst)%2;pBroadcast[i*2+slot]=vmRegs[si]*k;}break;
         case 13:{const instIdx=Math.abs(Math.floor(vmRegs[si]))%Math.max(1,prog.length);const selfInst=prog[instIdx];vmRegs[di]=selfInst?selfInst[Math.abs(Math.floor(k))%4]:0;}break;
         case 14:if(vmRegs[si]>k)ip=Math.abs(Math.floor(vmRegs[di]))%nInst;break;
