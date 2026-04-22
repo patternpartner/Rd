@@ -37,7 +37,7 @@ tr:hover td{background:rgba(40,60,80,0.3)}
 
 <div class="row">
   <button id="broadcast">◈ enable feedback broadcast</button>
-  <button id="syncsave">💾 sync-save all tabs</button>
+  <button id="syncsave" title="ask all connected tabs to broadcast their telemetry; coordinator downloads a single bundle">💾 sync-save bundle</button>
   <button id="export">📊 export archive</button>
   <button id="clear">🗑 clear archive</button>
   <span id="status" class="status">waiting for tabs…</span>
@@ -87,6 +87,10 @@ const TAB_TIMEOUT_MS=15000;       // tab considered gone if silent this long
 const tabs=new Map(); // tabId → {lastSeen, lastTelemetry, rateHistory:[{t,n}]}
 let feedbackEnabled=false;
 let bc=null;
+
+// Pe22n: pending sync-save responses — collected per sync-save event
+let pendingSyncResponses=null; // {startedAt, expectedFrom:Set, received:Array}
+let syncSaveTimeoutId=null;
 try{
   bc=new BroadcastChannel('selection-pe-network');
 }catch(e){
@@ -149,7 +153,19 @@ if(bc){
   bc.onmessage=ev=>{
     const m=ev.data;
     if(!m||!m.tab||m.tab===COORD_ID)return;
-    // We only care about telemetry messages; ignore migrants/plasmids
+    // Pe22n: sync-response — tab answering a sync-save request
+    if(m.type==='sync-response'){
+      if(pendingSyncResponses){
+        pendingSyncResponses.received.push({tabId:m.tab,...m});
+        pendingSyncResponses.expectedFrom.delete(m.tab);
+        // If all expected tabs responded, finalize immediately
+        if(pendingSyncResponses.expectedFrom.size===0){
+          finalizeSyncSave();
+        }
+      }
+      return;
+    }
+    // We only care about telemetry/hello otherwise
     if(m.type!=='telemetry'&&m.type!=='hello')return;
     let t=tabs.get(m.tab);
     if(!t){
@@ -380,13 +396,51 @@ document.getElementById('broadcast').onclick=()=>{
 };
 document.getElementById('syncsave').onclick=()=>{
   if(!bc){alert('BroadcastChannel unavailable');return;}
+  // Pe22n: initiate sync-save collection. Tabs broadcast their state back;
+  // coordinator bundles responses into a single downloaded file.
+  const expected=new Set();
+  const now=Date.now();
+  for(const[id,t] of tabs){
+    if(now-t.lastSeen<TAB_TIMEOUT_MS)expected.add(id);
+  }
+  if(expected.size===0){alert('no connected tabs to sync-save');return;}
+  pendingSyncResponses={startedAt:Date.now(),expectedFrom:expected,received:[]};
   bc.postMessage({tab:COORD_ID,type:'sync-save',at:Date.now()});
-  saveSnapshot('sync-save-triggered');
   const s=document.getElementById('status');
-  s.textContent='sync-save requested — tabs will export telemetry';
+  s.textContent=`sync-save: waiting for ${expected.size} tab(s) to respond…`;
   s.className='status';
-  setTimeout(()=>{s.textContent='';},4000);
+  // Timeout after 5 seconds — finalize with whatever we got
+  if(syncSaveTimeoutId)clearTimeout(syncSaveTimeoutId);
+  syncSaveTimeoutId=setTimeout(finalizeSyncSave,5000);
 };
+function finalizeSyncSave(){
+  if(syncSaveTimeoutId){clearTimeout(syncSaveTimeoutId);syncSaveTimeoutId=null;}
+  if(!pendingSyncResponses)return;
+  const bundle={
+    version:'coordinator-sync-1',
+    capturedAt:new Date(pendingSyncResponses.startedAt).toISOString(),
+    requested:Array.from(new Set([...pendingSyncResponses.expectedFrom,...pendingSyncResponses.received.map(r=>r.tabId)])).length,
+    received:pendingSyncResponses.received.length,
+    missing:Array.from(pendingSyncResponses.expectedFrom),
+    aggregate:computeAggregate(),
+    tabs:pendingSyncResponses.received
+  };
+  // Also archive the sync event to IndexedDB
+  saveSnapshot('sync-save ('+bundle.received+'/'+bundle.requested+' tabs)');
+  // Download the bundle — coordinator IS the active tab, so this works
+  const data=JSON.stringify(bundle,null,2);
+  const blob=new Blob([data],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='sync_save_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  const s=document.getElementById('status');
+  s.textContent=`sync-save complete: ${bundle.received}/${bundle.requested} tabs responded`;
+  s.className='status';
+  setTimeout(()=>{s.textContent='';},6000);
+  pendingSyncResponses=null;
+}
 document.getElementById('export').onclick=exportArchive;
 document.getElementById('clear').onclick=async()=>{
   if(!confirm('clear all archived snapshots?'))return;
