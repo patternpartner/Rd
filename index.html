@@ -33,7 +33,7 @@ tr:hover td{background:rgba(40,60,80,0.3)}
 </head>
 <body>
 <h1>SELECTION פ — COORDINATOR</h1>
-<div class="sub">cross-tab observation + feedback. runs alongside Pe tabs. persistent via IndexedDB.</div>
+<div class="sub">cross-tab observation + feedback + lineage persistence. tabs can request dead lineages to resume. network survives tab death.</div>
 
 <div class="row">
   <button id="broadcast">◈ enable feedback broadcast</button>
@@ -53,6 +53,7 @@ tr:hover td{background:rgba(40,60,80,0.3)}
   <div class="card"><div class="k">network emit rate</div><div class="v" id="totalRate">0</div><div class="s">emissions/tick</div></div>
   <div class="card"><div class="k">dominant freq</div><div class="v" id="domFreq">—</div><div class="s" id="domFreqDetail"></div></div>
   <div class="card"><div class="k">archive size</div><div class="v" id="archSize">0</div><div class="s">snapshots</div></div>
+  <div class="card"><div class="k">lineages</div><div class="v" id="lineageCount">0</div><div class="s" id="lineageDetail">0 dormant</div></div>
 </div>
 
 <h2>collective frequency histogram</h2>
@@ -102,16 +103,92 @@ try{
 let db=null;
 function openDB(){
   return new Promise((resolve,reject)=>{
-    const req=indexedDB.open('selection-coordinator',1);
-    req.onupgradeneeded=()=>{
+    const req=indexedDB.open('selection-coordinator',2);
+    req.onupgradeneeded=(e)=>{
       const d=req.result;
       if(!d.objectStoreNames.contains('snapshots')){
         d.createObjectStore('snapshots',{keyPath:'id',autoIncrement:true});
+      }
+      // Pe22p v3: lineages store keyed by tab ID. Updated on each genome snapshot.
+      // Lets the network persist memory of every lineage that has ever existed.
+      if(!d.objectStoreNames.contains('lineages')){
+        const store=d.createObjectStore('lineages',{keyPath:'tabId'});
+        store.createIndex('lastSeen','lastSeen');
+        store.createIndex('peakFitness','peakFitness');
       }
     };
     req.onsuccess=()=>{db=req.result;resolve(db);};
     req.onerror=()=>reject(req.error);
   });
+}
+// Pe22p v3: persist an incoming genome snapshot keyed by tab ID
+async function storeLineageSnapshot(msg){
+  if(!db)return;
+  try{
+    const tx=db.transaction('lineages','readwrite');
+    const store=tx.objectStore('lineages');
+    const existing=await new Promise(r=>{
+      const g=store.get(msg.tab);g.onsuccess=()=>r(g.result);g.onerror=()=>r(null);
+    });
+    const fitness=msg.fitness||0;
+    const record={
+      tabId:msg.tab,
+      lastSeen:Date.now(),
+      firstSeen:existing?existing.firstSeen:Date.now(),
+      snapshotCount:(existing?existing.snapshotCount:0)+1,
+      latestGeneration:msg.gen,
+      latestTicks:msg.t,
+      latestPop:msg.pop,
+      latestClusters:msg.clusters,
+      latestFitness:fitness,
+      peakFitness:Math.max(existing?existing.peakFitness:0,fitness),
+      extinctions:msg.extinctions,
+      encoded:msg.encoded
+    };
+    store.put(record);
+    await new Promise(r=>tx.oncomplete=r);
+    refreshArchive(); // update lineage count display
+  }catch(e){}
+}
+// Pe22p v3: find a dead lineage to offer. Weighted toward peak fitness but not deterministic.
+async function findLineageToRestore(requestingTabId){
+  if(!db)return null;
+  const now=Date.now();
+  try{
+    const tx=db.transaction('lineages','readonly');
+    const store=tx.objectStore('lineages');
+    return await new Promise(resolve=>{
+      const req=store.getAll();
+      req.onsuccess=()=>{
+        const candidates=req.result.filter(r=>{
+          if(r.tabId===requestingTabId)return false;
+          if(tabs.has(r.tabId)&&(now-tabs.get(r.tabId).lastSeen)<TAB_TIMEOUT_MS)return false;
+          return r.encoded&&r.encoded.length>10;
+        });
+        if(candidates.length===0){resolve(null);return;}
+        candidates.sort((a,b)=>b.peakFitness-a.peakFitness);
+        const pool=candidates.slice(0,3);
+        resolve(pool[Math.floor(Math.random()*pool.length)]);
+      };
+      req.onerror=()=>resolve(null);
+    });
+  }catch(e){return null;}
+}
+async function countLineages(){
+  if(!db)return{total:0,dead:0};
+  const now=Date.now();
+  try{
+    const tx=db.transaction('lineages','readonly');
+    return await new Promise(resolve=>{
+      const req=tx.objectStore('lineages').getAll();
+      req.onsuccess=()=>{
+        const all=req.result;
+        const dead=all.filter(r=>!(tabs.has(r.tabId)&&(now-tabs.get(r.tabId).lastSeen)<TAB_TIMEOUT_MS)).length;
+        resolve({total:all.length,dead});
+      };
+      req.onerror=()=>resolve({total:0,dead:0});
+    });
+  }catch(e){return{total:0,dead:0};}
 }
 async function saveSnapshot(note){
   if(!db)return;
@@ -142,8 +219,9 @@ async function listSnapshots(){
 }
 async function clearArchive(){
   if(!db)return;
-  const tx=db.transaction('snapshots','readwrite');
+  const tx=db.transaction(['snapshots','lineages'],'readwrite');
   tx.objectStore('snapshots').clear();
+  tx.objectStore('lineages').clear();
   await new Promise(r=>tx.oncomplete=r);
   refreshArchive();
 }
@@ -158,11 +236,37 @@ if(bc){
       if(pendingSyncResponses){
         pendingSyncResponses.received.push({tabId:m.tab,...m});
         pendingSyncResponses.expectedFrom.delete(m.tab);
-        // If all expected tabs responded, finalize immediately
         if(pendingSyncResponses.expectedFrom.size===0){
           finalizeSyncSave();
         }
       }
+      return;
+    }
+    // Pe22p: genome-snapshot — tab broadcasting its encoded state for persistence
+    if(m.type==='genome-snapshot'){
+      // Also update liveness tracking
+      let t=tabs.get(m.tab);
+      if(!t){t={lastSeen:Date.now(),lastTelemetry:null,rateHistory:[]};tabs.set(m.tab,t);}
+      t.lastSeen=Date.now();
+      storeLineageSnapshot(m);
+      return;
+    }
+    // Pe22p: request-genome — a tab wants a dead lineage to adopt
+    if(m.type==='request-genome'){
+      findLineageToRestore(m.tab).then(lineage=>{
+        if(lineage&&bc){
+          bc.postMessage({
+            tab:COORD_ID,type:'genome-offer',
+            forTab:m.tab,
+            encoded:lineage.encoded,
+            donorTabId:lineage.tabId,
+            donorGen:lineage.latestGeneration,
+            donorFitness:lineage.peakFitness,
+            donorTicks:lineage.latestTicks,
+            t:lineage.latestTicks
+          });
+        }
+      });
       return;
     }
     // We only care about telemetry/hello otherwise
@@ -361,6 +465,11 @@ function renderDivergence(agg){
 async function refreshArchive(){
   const snaps=await listSnapshots();
   document.getElementById('archSize').textContent=snaps.length;
+  const lc=await countLineages();
+  const el=document.getElementById('lineageCount');
+  if(el)el.textContent=lc.total;
+  const det=document.getElementById('lineageDetail');
+  if(det)det.textContent=lc.dead+' dormant';
   const tb=document.querySelector('#archTable tbody');
   tb.innerHTML=snaps.slice(0,50).map(s=>{
     const a=s.aggregate||{};
@@ -374,9 +483,22 @@ async function refreshArchive(){
 
 async function exportArchive(){
   const snaps=await listSnapshots();
+  // Also include lineages
+  let lineages=[];
+  if(db){
+    try{
+      const tx=db.transaction('lineages','readonly');
+      lineages=await new Promise(r=>{
+        const req=tx.objectStore('lineages').getAll();
+        req.onsuccess=()=>r(req.result);
+        req.onerror=()=>r([]);
+      });
+    }catch(e){}
+  }
   const data=JSON.stringify({
-    version:'coordinator-1',exportedAt:new Date().toISOString(),
-    count:snaps.length,snapshots:snaps
+    version:'coordinator-3',exportedAt:new Date().toISOString(),
+    snapshotCount:snaps.length,lineageCount:lineages.length,
+    snapshots:snaps,lineages:lineages
   },null,2);
   const blob=new Blob([data],{type:'application/json'});
   const a=document.createElement('a');
@@ -463,6 +585,13 @@ function tickRender(){
   const s=document.getElementById('status');
   if(!s.textContent.includes('sync-save'))
     s.textContent=agg.nTabs>0?`connected: ${agg.nTabs} tab(s)`:'waiting for tabs…';
+  // Update lineage count periodically
+  countLineages().then(lc=>{
+    const el=document.getElementById('lineageCount');
+    if(el)el.textContent=lc.total;
+    const det=document.getElementById('lineageDetail');
+    if(det)det.textContent=lc.dead+' dormant';
+  });
 }
 setInterval(tickRender,1000);
 
