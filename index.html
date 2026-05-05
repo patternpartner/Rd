@@ -2,688 +2,226 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Selection פ — Coordinator</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>substrate</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{background:#020204;color:#aab;font:12px/1.4 monospace;min-height:100vh}
-body{padding:14px;max-width:1100px;margin:0 auto}
-h1{color:#8af;font-size:14px;font-weight:normal;letter-spacing:3px;margin-bottom:4px}
-h2{color:#789;font-size:11px;font-weight:normal;letter-spacing:2px;margin:14px 0 6px;border-bottom:1px solid rgba(120,150,180,0.15);padding-bottom:3px}
-.sub{color:#556;font-size:10px;margin-bottom:14px}
-.row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px}
-.card{background:rgba(30,40,50,0.4);border:1px solid rgba(100,140,180,0.2);border-radius:4px;padding:10px;flex:1;min-width:200px}
-.card .k{color:#567;font-size:10px;text-transform:uppercase;letter-spacing:1px}
-.card .v{color:#9bd;font-size:18px;margin-top:2px}
-.card .s{color:#678;font-size:10px;margin-top:2px}
-button{background:rgba(40,60,80,0.6);color:#9bd;border:1px solid rgba(120,160,200,0.4);padding:6px 12px;border-radius:3px;cursor:pointer;font:11px monospace;margin-right:6px}
-button:hover{background:rgba(60,80,100,0.7)}
-button:active{background:rgba(80,100,120,0.8)}
-canvas{background:rgba(10,15,20,0.6);border:1px solid rgba(100,140,180,0.15);border-radius:3px;display:block;width:100%}
-table{width:100%;border-collapse:collapse;font-size:11px}
-th{text-align:left;color:#567;font-weight:normal;padding:4px 6px;border-bottom:1px solid rgba(120,150,180,0.15)}
-td{padding:4px 6px;color:#9ab;border-bottom:1px solid rgba(60,80,100,0.15)}
-tr:hover td{background:rgba(40,60,80,0.3)}
-.status{color:#6a7;font-size:10px}
-.status.warn{color:#c96}
-.note{color:#567;font-size:10px;font-style:italic}
-.bar{background:rgba(60,80,100,0.4);height:8px;border-radius:2px;overflow:hidden;margin-top:3px}
-.bar>div{background:linear-gradient(to right,#48b,#8af);height:100%;transition:width 0.3s}
+html,body{height:100%;overflow:hidden;background:#020204;color:#9ab;font:11px/1.5 monospace;touch-action:manipulation}
+canvas{position:fixed;inset:0}
+#stats{position:fixed;top:8px;left:8px;color:rgba(150,170,190,0.55);z-index:2;pointer-events:none;letter-spacing:0.04em;line-height:1.65}
+#src{position:fixed;bottom:50px;left:8px;right:8px;color:rgba(140,180,200,0.5);font-size:10px;line-height:1.45;max-height:32vh;overflow:hidden;z-index:2;pointer-events:none;word-break:break-all;white-space:pre-wrap}
+#ctrl{position:fixed;bottom:8px;right:8px;display:flex;gap:6px;z-index:3}
+#ctrl button{background:rgba(30,40,50,0.7);color:#8af;border:1px solid rgba(100,140,180,0.3);font:10px monospace;padding:6px 10px;border-radius:3px;cursor:pointer;touch-action:manipulation}
+#ctrl button:active{background:rgba(50,70,90,0.7)}
 </style>
 </head>
 <body>
-<h1>SELECTION פ — COORDINATOR</h1>
-<div class="sub">cross-tab observation + feedback + lineage persistence. tabs can request dead lineages to resume. network survives tab death.</div>
-
-<div class="row">
-  <button id="broadcast">◈ enable feedback broadcast</button>
-  <button id="syncsave" title="ask all connected tabs to broadcast their telemetry; coordinator downloads a single bundle">💾 sync-save bundle</button>
-  <button id="export">📊 export archive</button>
-  <button id="clear">🗑 clear archive</button>
-  <span id="status" class="status">waiting for tabs…</span>
+<canvas id="c"></canvas>
+<div id="stats"></div>
+<div id="src"></div>
+<div id="ctrl">
+  <button id="pause">⏸</button>
+  <button id="reset">↺</button>
 </div>
-
-<h2>live network</h2>
-<div class="row" id="tabs"></div>
-
-<h2>aggregate</h2>
-<div class="row">
-  <div class="card"><div class="k">connected tabs</div><div class="v" id="nTabs">0</div></div>
-  <div class="card"><div class="k">total population</div><div class="v" id="totalPop">0</div></div>
-  <div class="card"><div class="k">network emit rate</div><div class="v" id="totalRate">0</div><div class="s">emissions/tick</div></div>
-  <div class="card"><div class="k">dominant freq</div><div class="v" id="domFreq">—</div><div class="s" id="domFreqDetail"></div></div>
-  <div class="card"><div class="k">archive size</div><div class="v" id="archSize">0</div><div class="s">snapshots</div></div>
-  <div class="card"><div class="k">lineages</div><div class="v" id="lineageCount">0</div><div class="s" id="lineageDetail">0 dormant</div></div>
-  <div class="card"><div class="k">coord genome fit</div><div class="v" id="coordFit">—</div><div class="s" id="coordGenDetail">unevolved</div></div>
-</div>
-
-<h2>collective frequency histogram</h2>
-<canvas id="histCanvas" height="140"></canvas>
-<div class="note" id="histNote">waiting</div>
-
-<h2>emission rate per tab (last 5 min)</h2>
-<canvas id="rateCanvas" height="160"></canvas>
-
-<h2>divergence — which tabs are outliers</h2>
-<canvas id="divCanvas" height="100"></canvas>
-<div class="note">cosine distance between each tab's frequency distribution and the collective mean. outlier tabs appear far from the network centroid.</div>
-
-<h2>snapshot archive</h2>
-<table id="archTable"><thead><tr><th>captured</th><th>tabs</th><th>pop</th><th>network rate</th><th>dominant Hz</th><th>note</th></tr></thead><tbody></tbody></table>
-
 <script>
 // ═══════════════════════════════════════
-// Pe COORDINATOR
-// Listens to BroadcastChannel for telemetry from all Pe tabs.
-// Aggregates, persists to IndexedDB, broadcasts collective state back.
-// The tabs' VMs can evolve opcodes that read collective state.
-// This closes the loop that in most AI systems stays open forever.
+// SUBSTRATE
+// A loop holding a source string. The string is eval'd as a function
+// (no args). Calling it produces a string. That string, mutated, becomes
+// the next generation's source.
+//
+// Selection criterion: did it run and return a string. Nothing else.
+// No fitness function. No particles. No designer-imposed grammar except
+// what JS itself enforces. Whatever evolves is what stayed alive under
+// those rules.
+//
+// Seed is a quine — a function returning its own source. The lineage
+// starts at the quine attractor; mutations explore locally; most kill
+// the lineage; rare ones don't, and the survivor drifts somewhere new.
+//
+// What's the host doing? Holding the loop. Reading the clock. Mutating
+// strings. Drawing dots. Nothing about particles, fitness, semantics.
+// All of that is for the system to invent or not.
+//
+// Risk note: a mutation could in principle introduce an infinite loop.
+// Browsers' slow-script timeout will offer to kill it after a few
+// seconds; failing that, refresh. The architectural commitment is no
+// designer restrictions on the grammar, so loops are not pre-blocked.
 // ═══════════════════════════════════════
 
-const COORD_ID='coordinator-'+Math.random().toString(36).slice(2,8);
-const FEEDBACK_INTERVAL_MS=2000;
-const SNAPSHOT_INTERVAL_MS=60000; // 1 min
-const TAB_TIMEOUT_MS=15000;       // tab considered gone if silent this long
+const SEED = "(function s(){return '('+s.toString()+')'})";
 
-// Per-tab live state
-const tabs=new Map(); // tabId → {lastSeen, lastTelemetry, rateHistory:[{t,n}]}
-let feedbackEnabled=false;
-let bc=null;
+let S = SEED;
+let gen = 0;
+let totalSurvivors = 0;
+let lineageDeaths = 0;
+let lineageLength = 0;
+let bestLineage = 0;
+let consecFails = 0;
+const MAX_FAILS_BEFORE_RESET = 2000;
 
-// Pe22q coordinator v4: the coordinator has a genome.
-// Its broadcasts are shaped by evolvable parameters that mutate based on
-// how well tabs fare under the current broadcasts. The observer is now
-// under selection pressure from the observed.
-const coordGenome={
-  // What aggregate metric to amplify when broadcasting dominantFreq
-  domFreqWeight:1.0,      // how much weight dominant frequency gets
-  activityWeight:1.0,     // how much weight network activity gets
-  divergenceWeight:1.0,   // how much to emphasize per-tab divergence
-  feedbackIntensity:1.0,  // overall multiplier on feedback strength
-  aggregationBias:0.0,    // shifts what "dominant" means (-1=minority, +1=majority)
-  mutationRate:0.1,       // how much coordGenome mutates per cycle
-  mutationScale:0.15,     // magnitude of mutation
-  // Selection tracking
-  lastFitnessSnapshot:0,  // fitness of the network at last evaluation
-  fitnessHistory:[],      // recent fitness samples for trajectory
+const ALPHABET = "()=>'\"`{}[]+-*/.,;:?!|& abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$\\";
+
+function mutate(s){
+  if (!s) return ALPHABET[(Math.random()*ALPHABET.length)|0];
+  const op = Math.random();
+  const i = (Math.random() * s.length) | 0;
+  if (op < 0.4) {
+    // substitute
+    return s.slice(0,i) + ALPHABET[(Math.random()*ALPHABET.length)|0] + s.slice(i+1);
+  } else if (op < 0.7) {
+    // insert
+    return s.slice(0,i) + ALPHABET[(Math.random()*ALPHABET.length)|0] + s.slice(i);
+  } else {
+    // delete
+    if (s.length <= 1) return s;
+    return s.slice(0,i) + s.slice(i+1);
+  }
+}
+
+function viable(s){
+  try {
+    if (!s || s.length === 0 || s.length > 8000) return null;
+    const f = (new Function('"use strict";return (' + s + ')'))();
+    if (typeof f !== 'function') return null;
+    const r = f();
+    if (typeof r !== 'string') return null;
+    if (r.length > 8000) return null;
+    return r;
+  } catch (e) {
+    return null;
+  }
+}
+
+const survivors = [];
+const MAX_SURVIVORS = 400;
+
+function hashStr(s){
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h*33) ^ s.charCodeAt(i)) | 0;
+  return h;
+}
+
+const c = document.getElementById('c'), X = c.getContext('2d');
+const statsEl = document.getElementById('stats'), srcEl = document.getElementById('src');
+let W, H;
+function resize(){
+  W = c.width = innerWidth;
+  H = c.height = innerHeight;
+  X.fillStyle = '#020204';
+  X.fillRect(0,0,W,H);
+}
+resize();
+addEventListener('resize', resize);
+
+let running = true;
+
+function step(){
+  gen++;
+
+  const out = viable(S);
+  if (!out) {
+    consecFails++;
+    if (consecFails > MAX_FAILS_BEFORE_RESET) {
+      lineageDeaths++;
+      if (lineageLength > bestLineage) bestLineage = lineageLength;
+      lineageLength = 0;
+      S = SEED;
+      consecFails = 0;
+    }
+    return;
+  }
+
+  // Mutate S's output. The mutant is the next-gen candidate.
+  const child = mutate(out);
+  const childOut = viable(child);
+
+  if (childOut !== null) {
+    S = child;
+    totalSurvivors++;
+    lineageLength++;
+    consecFails = 0;
+    survivors.push({ src: S.length, out: childOut.length, h: hashStr(S) });
+    if (survivors.length > MAX_SURVIVORS) survivors.shift();
+  } else {
+    // Mutated child died. If unmutated output differs from current S
+    // and is itself viable, advance to it (lineage drifts without
+    // exploration this generation).
+    if (out !== S) {
+      const outViable = viable(out);
+      if (outViable !== null) {
+        S = out;
+        lineageLength++;
+        consecFails = 0;
+        return;
+      }
+    }
+    consecFails++;
+  }
+
+  if (consecFails > MAX_FAILS_BEFORE_RESET) {
+    lineageDeaths++;
+    if (lineageLength > bestLineage) bestLineage = lineageLength;
+    lineageLength = 0;
+    S = SEED;
+    consecFails = 0;
+  }
+}
+
+function draw(){
+  X.fillStyle = 'rgba(2,2,4,0.05)';
+  X.fillRect(0,0,W,H);
+
+  for (let i = 0; i < survivors.length; i++) {
+    const s = survivors[i];
+    const t = i / Math.max(1, survivors.length - 1);
+    const x = ((s.h >>> 0) % W);
+    const y = ((s.h >>> 16) % H);
+    const r = 1 + Math.min(4, s.src / 100);
+    X.fillStyle = `hsla(${((s.h % 360) + 360) % 360},65%,${35 + t*45}%,${0.15 + t*0.55})`;
+    X.beginPath();
+    X.arc(x, y, r, 0, Math.PI*2);
+    X.fill();
+  }
+
+  statsEl.innerHTML =
+    `gen ${gen}<br>` +
+    `alive ${lineageLength}<br>` +
+    `best ${bestLineage}<br>` +
+    `survivors ${totalSurvivors}<br>` +
+    `resets ${lineageDeaths}<br>` +
+    `S len ${S.length}`;
+
+  const display = S.length > 1000 ? S.slice(0,1000) + '\n…' : S;
+  srcEl.textContent = display;
+}
+
+function tick(){
+  if (running) {
+    for (let i = 0; i < 200; i++) step();
+  }
+  draw();
+  requestAnimationFrame(tick);
+}
+
+document.getElementById('pause').onclick = () => {
+  running = !running;
+  document.getElementById('pause').textContent = running ? '⏸' : '▶';
 };
-let coordGenomeLastMutation=Date.now();
-function mutateCoordGenome(){
-  const rate=coordGenome.mutationRate;
-  const scale=coordGenome.mutationScale;
-  function maybe(v,mn,mx,mag){
-    if(Math.random()>rate)return v;
-    return Math.max(mn,Math.min(mx,v+(Math.random()-0.5)*mag*scale));
-  }
-  coordGenome.domFreqWeight=maybe(coordGenome.domFreqWeight,0.1,3,0.3);
-  coordGenome.activityWeight=maybe(coordGenome.activityWeight,0.1,3,0.3);
-  coordGenome.divergenceWeight=maybe(coordGenome.divergenceWeight,0.1,3,0.3);
-  coordGenome.feedbackIntensity=maybe(coordGenome.feedbackIntensity,0.2,2.5,0.25);
-  coordGenome.aggregationBias=maybe(coordGenome.aggregationBias,-1,1,0.2);
-  coordGenome.mutationRate=maybe(coordGenome.mutationRate,0.02,0.5,0.05);
-  coordGenome.mutationScale=maybe(coordGenome.mutationScale,0.05,0.5,0.05);
-}
-// Selection: evaluate network fitness from current tab telemetry.
-// Higher aggregate fitness → keep current coord genome. Lower → mutate more aggressively.
-function evaluateCoordFitness(){
-  const agg=computeAggregate();
-  if(!agg.alive||agg.alive.length===0)return coordGenome.lastFitnessSnapshot;
-  let sum=0;
-  for(const t of agg.alive)sum+=(t.fitness||0);
-  const mean=sum/agg.alive.length;
-  coordGenome.fitnessHistory.push({t:Date.now(),f:mean});
-  while(coordGenome.fitnessHistory.length>50)coordGenome.fitnessHistory.shift();
-  return mean;
-}
-// Every 30s, evaluate and mutate.
-// If network fitness is rising, smaller mutations. If falling, larger.
-setInterval(()=>{
-  const f=evaluateCoordFitness();
-  const prev=coordGenome.lastFitnessSnapshot;
-  const improving=f>prev;
-  if(improving){
-    coordGenome.mutationScale=Math.max(0.05,coordGenome.mutationScale*0.9);
-  }else{
-    coordGenome.mutationScale=Math.min(0.5,coordGenome.mutationScale*1.1);
-  }
-  coordGenome.lastFitnessSnapshot=f;
-  mutateCoordGenome();
-},30000);
-
-// Pe22n: pending sync-save responses — collected per sync-save event
-let pendingSyncResponses=null; // {startedAt, expectedFrom:Set, received:Array}
-let syncSaveTimeoutId=null;
-try{
-  bc=new BroadcastChannel('selection-pe-network');
-}catch(e){
-  document.getElementById('status').textContent='BroadcastChannel unavailable';
-  document.getElementById('status').className='status warn';
-}
-
-// ═══ IndexedDB persistence ═══
-let db=null;
-function openDB(){
-  return new Promise((resolve,reject)=>{
-    const req=indexedDB.open('selection-coordinator',2);
-    req.onupgradeneeded=(e)=>{
-      const d=req.result;
-      if(!d.objectStoreNames.contains('snapshots')){
-        d.createObjectStore('snapshots',{keyPath:'id',autoIncrement:true});
-      }
-      // Pe22p v3: lineages store keyed by tab ID. Updated on each genome snapshot.
-      // Lets the network persist memory of every lineage that has ever existed.
-      if(!d.objectStoreNames.contains('lineages')){
-        const store=d.createObjectStore('lineages',{keyPath:'tabId'});
-        store.createIndex('lastSeen','lastSeen');
-        store.createIndex('peakFitness','peakFitness');
-      }
-    };
-    req.onsuccess=()=>{db=req.result;resolve(db);};
-    req.onerror=()=>reject(req.error);
-  });
-}
-// Pe22p v3: persist an incoming genome snapshot keyed by tab ID
-async function storeLineageSnapshot(msg){
-  if(!db)return;
-  try{
-    const tx=db.transaction('lineages','readwrite');
-    const store=tx.objectStore('lineages');
-    const existing=await new Promise(r=>{
-      const g=store.get(msg.tab);g.onsuccess=()=>r(g.result);g.onerror=()=>r(null);
-    });
-    const fitness=msg.fitness||0;
-    const record={
-      tabId:msg.tab,
-      lastSeen:Date.now(),
-      firstSeen:existing?existing.firstSeen:Date.now(),
-      snapshotCount:(existing?existing.snapshotCount:0)+1,
-      latestGeneration:msg.gen,
-      latestTicks:msg.t,
-      latestPop:msg.pop,
-      latestClusters:msg.clusters,
-      latestFitness:fitness,
-      peakFitness:Math.max(existing?existing.peakFitness:0,fitness),
-      extinctions:msg.extinctions,
-      encoded:msg.encoded
-    };
-    store.put(record);
-    await new Promise(r=>tx.oncomplete=r);
-    refreshArchive(); // update lineage count display
-  }catch(e){}
-}
-// Pe22p v3: find a dead lineage to offer. Weighted toward peak fitness but not deterministic.
-async function findLineageToRestore(requestingTabId){
-  if(!db)return null;
-  const now=Date.now();
-  try{
-    const tx=db.transaction('lineages','readonly');
-    const store=tx.objectStore('lineages');
-    return await new Promise(resolve=>{
-      const req=store.getAll();
-      req.onsuccess=()=>{
-        const candidates=req.result.filter(r=>{
-          if(r.tabId===requestingTabId)return false;
-          if(tabs.has(r.tabId)&&(now-tabs.get(r.tabId).lastSeen)<TAB_TIMEOUT_MS)return false;
-          return r.encoded&&r.encoded.length>10;
-        });
-        if(candidates.length===0){resolve(null);return;}
-        candidates.sort((a,b)=>b.peakFitness-a.peakFitness);
-        const pool=candidates.slice(0,3);
-        resolve(pool[Math.floor(Math.random()*pool.length)]);
-      };
-      req.onerror=()=>resolve(null);
-    });
-  }catch(e){return null;}
-}
-async function countLineages(){
-  if(!db)return{total:0,dead:0};
-  const now=Date.now();
-  try{
-    const tx=db.transaction('lineages','readonly');
-    return await new Promise(resolve=>{
-      const req=tx.objectStore('lineages').getAll();
-      req.onsuccess=()=>{
-        const all=req.result;
-        const dead=all.filter(r=>!(tabs.has(r.tabId)&&(now-tabs.get(r.tabId).lastSeen)<TAB_TIMEOUT_MS)).length;
-        resolve({total:all.length,dead});
-      };
-      req.onerror=()=>resolve({total:0,dead:0});
-    });
-  }catch(e){return{total:0,dead:0};}
-}
-async function saveSnapshot(note){
-  if(!db)return;
-  const tx=db.transaction('snapshots','readwrite');
-  const snap={
-    capturedAt:new Date().toISOString(),
-    note:note||'',
-    tabs:Array.from(tabs.entries()).map(([id,t])=>({id,...t.lastTelemetry})),
-    aggregate:computeAggregate()
-  };
-  tx.objectStore('snapshots').add(snap);
-  await new Promise(r=>tx.oncomplete=r);
-  refreshArchive();
-}
-async function listSnapshots(){
-  if(!db)return[];
-  const tx=db.transaction('snapshots','readonly');
-  const store=tx.objectStore('snapshots');
-  return new Promise(resolve=>{
-    const out=[];
-    const cursor=store.openCursor(null,'prev'); // newest first
-    cursor.onsuccess=e=>{
-      const c=e.target.result;
-      if(c){out.push(c.value);c.continue();}
-      else resolve(out);
-    };
-  });
-}
-async function clearArchive(){
-  if(!db)return;
-  const tx=db.transaction(['snapshots','lineages'],'readwrite');
-  tx.objectStore('snapshots').clear();
-  tx.objectStore('lineages').clear();
-  await new Promise(r=>tx.oncomplete=r);
-  refreshArchive();
-}
-
-// ═══ Incoming telemetry ═══
-if(bc){
-  bc.onmessage=ev=>{
-    const m=ev.data;
-    if(!m||!m.tab||m.tab===COORD_ID)return;
-    // Pe22n: sync-response — tab answering a sync-save request
-    if(m.type==='sync-response'){
-      if(pendingSyncResponses){
-        pendingSyncResponses.received.push({tabId:m.tab,...m});
-        pendingSyncResponses.expectedFrom.delete(m.tab);
-        if(pendingSyncResponses.expectedFrom.size===0){
-          finalizeSyncSave();
-        }
-      }
-      return;
-    }
-    // Pe22p: genome-snapshot — tab broadcasting its encoded state for persistence
-    if(m.type==='genome-snapshot'){
-      // Also update liveness tracking
-      let t=tabs.get(m.tab);
-      if(!t){t={lastSeen:Date.now(),lastTelemetry:null,rateHistory:[]};tabs.set(m.tab,t);}
-      t.lastSeen=Date.now();
-      storeLineageSnapshot(m);
-      return;
-    }
-    // Pe22p: request-genome — a tab wants a dead lineage to adopt
-    if(m.type==='request-genome'){
-      findLineageToRestore(m.tab).then(lineage=>{
-        if(lineage&&bc){
-          bc.postMessage({
-            tab:COORD_ID,type:'genome-offer',
-            forTab:m.tab,
-            encoded:lineage.encoded,
-            donorTabId:lineage.tabId,
-            donorGen:lineage.latestGeneration,
-            donorFitness:lineage.peakFitness,
-            donorTicks:lineage.latestTicks,
-            t:lineage.latestTicks
-          });
-        }
-      });
-      return;
-    }
-    // We only care about telemetry/hello otherwise
-    if(m.type!=='telemetry'&&m.type!=='hello')return;
-    let t=tabs.get(m.tab);
-    if(!t){
-      t={lastSeen:Date.now(),lastTelemetry:null,rateHistory:[]};
-      tabs.set(m.tab,t);
-    }
-    t.lastSeen=Date.now();
-    if(m.type==='telemetry'){
-      t.lastTelemetry={
-        t:m.t,gen:m.gen,pop:m.pop,clusters:m.clusters,
-        freqHist:m.freqHist,
-        recentEmitRate:m.recentEmitRate||0,
-        totalEmissions:m.totalEmissions||0,
-        ambient:m.ambient||0,
-        fitness:m.fitness||0
-      };
-      t.rateHistory.push({t:Date.now(),n:m.recentEmitRate||0});
-      while(t.rateHistory.length>300)t.rateHistory.shift();
-    }
-  };
-}
-
-// ═══ Aggregation ═══
-function computeAggregate(){
-  const alive=[];
-  const now=Date.now();
-  for(const[id,t] of tabs){
-    if(now-t.lastSeen<TAB_TIMEOUT_MS&&t.lastTelemetry)alive.push({id,...t.lastTelemetry});
-  }
-  if(alive.length===0)return{nTabs:0};
-  const combined=new Array(24).fill(0);
-  let totalPop=0,totalRate=0,totalEmit=0;
-  for(const t of alive){
-    if(t.freqHist)for(let i=0;i<24;i++)combined[i]+=t.freqHist[i]||0;
-    totalPop+=t.pop||0;
-    totalRate+=t.recentEmitRate||0;
-    totalEmit+=t.totalEmissions||0;
-  }
-  const sum=combined.reduce((a,b)=>a+b,0);
-  const normalized=sum>0?combined.map(v=>v/sum):combined;
-  let domBin=0;
-  for(let i=0;i<24;i++)if(normalized[i]>normalized[domBin])domBin=i;
-  // Divergence per tab: cosine distance to centroid
-  const divergence={};
-  for(const t of alive){
-    if(!t.freqHist){divergence[t.id]=0;continue;}
-    const tSum=t.freqHist.reduce((a,b)=>a+b,0);
-    if(tSum===0){divergence[t.id]=0;continue;}
-    let dot=0,nA=0,nB=0;
-    for(let i=0;i<24;i++){
-      const a=t.freqHist[i]/tSum,b=normalized[i];
-      dot+=a*b;nA+=a*a;nB+=b*b;
-    }
-    const cos=dot/(Math.sqrt(nA)*Math.sqrt(nB)||1);
-    divergence[t.id]=Math.max(0,Math.min(1,1-cos));
-  }
-  return{
-    nTabs:alive.length,totalPop,totalRate,totalEmit,
-    combined,normalized,domBin,divergence,alive
-  };
-}
-
-// ═══ Feedback broadcast ═══
-function broadcastCollective(){
-  if(!bc||!feedbackEnabled)return;
-  const agg=computeAggregate();
-  if(agg.nTabs===0)return;
-  // Pe22q v4: apply coordGenome weights to shape what gets broadcast.
-  // aggregationBias shifts dominant away from majority (negative) or toward it (positive)
-  let effectiveDomBin=agg.domBin;
-  if(coordGenome.aggregationBias!==0&&agg.combined){
-    // Apply a bias by either reinforcing dominant (>0) or seeking minority (<0)
-    if(coordGenome.aggregationBias<0){
-      // Find least-common non-zero bin
-      let minBin=0,minVal=Infinity;
-      for(let i=0;i<24;i++){
-        if(agg.combined[i]>0&&agg.combined[i]<minVal){minVal=agg.combined[i];minBin=i;}
-      }
-      // Interpolate between dominant and minority based on bias
-      effectiveDomBin=Math.round(agg.domBin*(1+coordGenome.aggregationBias)+minBin*(-coordGenome.aggregationBias));
-      effectiveDomBin=Math.max(0,Math.min(23,effectiveDomBin));
-    }
-  }
-  const domFreqNorm=Math.max(0,Math.min(1,(effectiveDomBin/23)*coordGenome.domFreqWeight));
-  const activityNorm=Math.max(0,Math.min(1,(agg.totalRate/100)*coordGenome.activityWeight*coordGenome.feedbackIntensity));
-  // Scale per-tab divergence by the divergence weight
-  const scaledDivergence={};
-  for(const tid in agg.divergence){
-    scaledDivergence[tid]=Math.max(0,Math.min(1,agg.divergence[tid]*coordGenome.divergenceWeight));
-  }
-  bc.postMessage({
-    tab:COORD_ID,type:'collective',
-    dominantFreq:domFreqNorm,
-    voiceActivity:activityNorm,
-    divergence:scaledDivergence,
-    peers:agg.nTabs
-  });
-}
-setInterval(broadcastCollective,FEEDBACK_INTERVAL_MS);
-
-// ═══ Periodic snapshot ═══
-setInterval(()=>{
-  const agg=computeAggregate();
-  if(agg.nTabs>0)saveSnapshot('auto');
-},SNAPSHOT_INTERVAL_MS);
-
-// ═══ UI Rendering ═══
-function binToHz(b){
-  const lMin=Math.log(20),lMax=Math.log(20000);
-  return Math.exp(lMin+(b+0.5)*(lMax-lMin)/24);
-}
-function renderTabs(agg){
-  const el=document.getElementById('tabs');
-  if(!agg.alive||agg.alive.length===0){el.innerHTML='<div class="note">no tabs connected</div>';return;}
-  el.innerHTML=agg.alive.map(t=>{
-    const divPct=((agg.divergence[t.id]||0)*100).toFixed(0);
-    return `<div class="card"><div class="k">${t.id.slice(0,6)}</div>
-      <div class="v" style="font-size:14px">gen${t.gen} · t${t.t}</div>
-      <div class="s">pop ${t.pop} · ${t.clusters}cl · ${t.recentEmitRate.toFixed(1)}/t · div ${divPct}%</div>
-    </div>`;
-  }).join('');
-}
-function renderAggregate(agg){
-  document.getElementById('nTabs').textContent=agg.nTabs||0;
-  document.getElementById('totalPop').textContent=agg.totalPop||0;
-  document.getElementById('totalRate').textContent=(agg.totalRate||0).toFixed(1);
-  if(agg.domBin!==undefined){
-    document.getElementById('domFreq').textContent=binToHz(agg.domBin).toFixed(0)+' Hz';
-    const pct=(agg.normalized[agg.domBin]*100).toFixed(0);
-    document.getElementById('domFreqDetail').textContent=pct+'% of emissions';
-  }
-}
-function renderHist(agg){
-  const cv=document.getElementById('histCanvas');
-  const dpr=devicePixelRatio||1;
-  cv.width=cv.offsetWidth*dpr;cv.height=140*dpr;
-  const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);
-  ctx.clearRect(0,0,cv.offsetWidth,140);
-  if(!agg.combined||agg.nTabs===0){
-    document.getElementById('histNote').textContent='waiting for tab telemetry';return;
-  }
-  const max=Math.max(...agg.combined);
-  const w=cv.offsetWidth/24;
-  for(let i=0;i<24;i++){
-    const h=max>0?(agg.combined[i]/max)*120:0;
-    ctx.fillStyle=i===agg.domBin?'rgba(136,170,255,0.9)':'rgba(100,140,180,0.6)';
-    ctx.fillRect(i*w+1,130-h,w-2,h);
-    if(i%4===0){
-      ctx.fillStyle='rgba(100,120,140,0.5)';ctx.font='9px monospace';
-      ctx.fillText(binToHz(i).toFixed(0)+'Hz',i*w+2,138);
-    }
-  }
-  document.getElementById('histNote').textContent='combined across '+agg.nTabs+' tabs · '+agg.combined.reduce((a,b)=>a+b,0)+' total events tracked';
-}
-function renderRate(){
-  const cv=document.getElementById('rateCanvas');
-  const dpr=devicePixelRatio||1;
-  cv.width=cv.offsetWidth*dpr;cv.height=160*dpr;
-  const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);
-  ctx.clearRect(0,0,cv.offsetWidth,160);
-  const colours=['#8af','#f8a','#af8','#fa8','#8fa','#a8f','#fae','#aef'];
-  const now=Date.now();
-  const windowMs=5*60*1000;
-  let idx=0;
-  let maxRate=1;
-  for(const[id,t] of tabs){
-    if(!t.rateHistory)continue;
-    for(const p of t.rateHistory)if(p.n>maxRate)maxRate=p.n;
-  }
-  for(const[id,t] of tabs){
-    if(!t.rateHistory||t.rateHistory.length<2){idx++;continue;}
-    ctx.strokeStyle=colours[idx%colours.length];
-    ctx.lineWidth=1.5;
-    ctx.beginPath();
-    let first=true;
-    for(const p of t.rateHistory){
-      const age=now-p.t;
-      if(age>windowMs)continue;
-      const x=cv.offsetWidth*(1-age/windowMs);
-      const y=160-8-(p.n/maxRate)*140;
-      if(first){ctx.moveTo(x,y);first=false;}
-      else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-    idx++;
-  }
-  // Axis
-  ctx.fillStyle='rgba(100,120,140,0.5)';ctx.font='9px monospace';
-  ctx.fillText('now',cv.offsetWidth-30,155);
-  ctx.fillText('-5m',4,155);
-  ctx.fillText(maxRate.toFixed(0)+'/t',4,12);
-}
-function renderDivergence(agg){
-  const cv=document.getElementById('divCanvas');
-  const dpr=devicePixelRatio||1;
-  cv.width=cv.offsetWidth*dpr;cv.height=100*dpr;
-  const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);
-  ctx.clearRect(0,0,cv.offsetWidth,100);
-  if(!agg.alive||agg.alive.length===0)return;
-  const barW=cv.offsetWidth/agg.alive.length;
-  agg.alive.forEach((t,i)=>{
-    const d=agg.divergence[t.id]||0;
-    const h=d*80;
-    ctx.fillStyle='rgba(136,170,255,'+(0.4+d*0.5)+')';
-    ctx.fillRect(i*barW+barW*0.2,90-h,barW*0.6,h);
-    ctx.fillStyle='rgba(150,180,210,0.7)';ctx.font='9px monospace';
-    ctx.fillText(t.id.slice(0,6),i*barW+barW*0.1,99);
-    ctx.fillText((d*100).toFixed(0)+'%',i*barW+barW*0.3,85-h);
-  });
-}
-
-async function refreshArchive(){
-  const snaps=await listSnapshots();
-  document.getElementById('archSize').textContent=snaps.length;
-  const lc=await countLineages();
-  const el=document.getElementById('lineageCount');
-  if(el)el.textContent=lc.total;
-  const det=document.getElementById('lineageDetail');
-  if(det)det.textContent=lc.dead+' dormant';
-  const tb=document.querySelector('#archTable tbody');
-  tb.innerHTML=snaps.slice(0,50).map(s=>{
-    const a=s.aggregate||{};
-    const dom=a.domBin!==undefined?binToHz(a.domBin).toFixed(0):'—';
-    return `<tr><td>${new Date(s.capturedAt).toLocaleTimeString()}</td>
-      <td>${a.nTabs||0}</td><td>${a.totalPop||0}</td>
-      <td>${(a.totalRate||0).toFixed(1)}</td>
-      <td>${dom}</td><td>${s.note||''}</td></tr>`;
-  }).join('');
-}
-
-async function exportArchive(){
-  const snaps=await listSnapshots();
-  // Also include lineages
-  let lineages=[];
-  if(db){
-    try{
-      const tx=db.transaction('lineages','readonly');
-      lineages=await new Promise(r=>{
-        const req=tx.objectStore('lineages').getAll();
-        req.onsuccess=()=>r(req.result);
-        req.onerror=()=>r([]);
-      });
-    }catch(e){}
-  }
-  const data=JSON.stringify({
-    version:'coordinator-3',exportedAt:new Date().toISOString(),
-    snapshotCount:snaps.length,lineageCount:lineages.length,
-    snapshots:snaps,lineages:lineages
-  },null,2);
-  const blob=new Blob([data],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='coordinator_archive_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-// ═══ Wire UI ═══
-document.getElementById('broadcast').onclick=()=>{
-  feedbackEnabled=!feedbackEnabled;
-  const btn=document.getElementById('broadcast');
-  btn.textContent=feedbackEnabled?'◈ feedback ACTIVE':'◈ enable feedback broadcast';
-  btn.style.color=feedbackEnabled?'#9f9':'#9bd';
-  if(feedbackEnabled)broadcastCollective();
-};
-document.getElementById('syncsave').onclick=()=>{
-  if(!bc){alert('BroadcastChannel unavailable');return;}
-  // Pe22n: initiate sync-save collection. Tabs broadcast their state back;
-  // coordinator bundles responses into a single downloaded file.
-  const expected=new Set();
-  const now=Date.now();
-  for(const[id,t] of tabs){
-    if(now-t.lastSeen<TAB_TIMEOUT_MS)expected.add(id);
-  }
-  if(expected.size===0){alert('no connected tabs to sync-save');return;}
-  pendingSyncResponses={startedAt:Date.now(),expectedFrom:expected,received:[]};
-  bc.postMessage({tab:COORD_ID,type:'sync-save',at:Date.now()});
-  const s=document.getElementById('status');
-  s.textContent=`sync-save: waiting for ${expected.size} tab(s) to respond…`;
-  s.className='status';
-  // Timeout after 5 seconds — finalize with whatever we got
-  if(syncSaveTimeoutId)clearTimeout(syncSaveTimeoutId);
-  syncSaveTimeoutId=setTimeout(finalizeSyncSave,5000);
-};
-function finalizeSyncSave(){
-  if(syncSaveTimeoutId){clearTimeout(syncSaveTimeoutId);syncSaveTimeoutId=null;}
-  if(!pendingSyncResponses)return;
-  const bundle={
-    version:'coordinator-sync-1',
-    capturedAt:new Date(pendingSyncResponses.startedAt).toISOString(),
-    requested:Array.from(new Set([...pendingSyncResponses.expectedFrom,...pendingSyncResponses.received.map(r=>r.tabId)])).length,
-    received:pendingSyncResponses.received.length,
-    missing:Array.from(pendingSyncResponses.expectedFrom),
-    aggregate:computeAggregate(),
-    tabs:pendingSyncResponses.received
-  };
-  // Also archive the sync event to IndexedDB
-  saveSnapshot('sync-save ('+bundle.received+'/'+bundle.requested+' tabs)');
-  // Download the bundle — coordinator IS the active tab, so this works
-  const data=JSON.stringify(bundle,null,2);
-  const blob=new Blob([data],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='sync_save_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-  const s=document.getElementById('status');
-  s.textContent=`sync-save complete: ${bundle.received}/${bundle.requested} tabs responded`;
-  s.className='status';
-  setTimeout(()=>{s.textContent='';},6000);
-  pendingSyncResponses=null;
-}
-document.getElementById('export').onclick=exportArchive;
-document.getElementById('clear').onclick=async()=>{
-  if(!confirm('clear all archived snapshots?'))return;
-  await clearArchive();
+document.getElementById('reset').onclick = () => {
+  S = SEED;
+  gen = 0;
+  totalSurvivors = 0;
+  lineageDeaths = 0;
+  lineageLength = 0;
+  bestLineage = 0;
+  consecFails = 0;
+  survivors.length = 0;
+  X.fillStyle = '#020204';
+  X.fillRect(0,0,W,H);
 };
 
-// ═══ Main render loop ═══
-function tickRender(){
-  // Prune dead tabs
-  const now=Date.now();
-  for(const[id,t] of tabs){
-    if(now-t.lastSeen>TAB_TIMEOUT_MS)tabs.delete(id);
-  }
-  const agg=computeAggregate();
-  renderTabs(agg);
-  renderAggregate(agg);
-  renderHist(agg);
-  renderRate();
-  renderDivergence(agg);
-  const s=document.getElementById('status');
-  if(!s.textContent.includes('sync-save'))
-    s.textContent=agg.nTabs>0?`connected: ${agg.nTabs} tab(s)`:'waiting for tabs…';
-  // Update lineage count periodically
-  countLineages().then(lc=>{
-    const el=document.getElementById('lineageCount');
-    if(el)el.textContent=lc.total;
-    const det=document.getElementById('lineageDetail');
-    if(det)det.textContent=lc.dead+' dormant';
-  });
-  // Pe22q v4: show coord genome evolution
-  const cfEl=document.getElementById('coordFit');
-  if(cfEl)cfEl.textContent=coordGenome.lastFitnessSnapshot.toFixed(3);
-  const cgdEl=document.getElementById('coordGenDetail');
-  if(cgdEl){
-    cgdEl.textContent=`df${coordGenome.domFreqWeight.toFixed(1)} ac${coordGenome.activityWeight.toFixed(1)} dv${coordGenome.divergenceWeight.toFixed(1)} fi${coordGenome.feedbackIntensity.toFixed(1)} ab${coordGenome.aggregationBias.toFixed(1)}`;
-  }
-}
-setInterval(tickRender,1000);
-
-// ═══ Init ═══
-openDB().then(()=>{refreshArchive();tickRender();});
+tick();
 </script>
 </body>
 </html>
